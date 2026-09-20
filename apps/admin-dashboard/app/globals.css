@@ -1,0 +1,120 @@
+@import 'tailwindcss';
+
+:root {
+    /* Soft Swiss / Calm Intelligence — white workspace, quiet modules */
+    --lotto-bg: #ffffff;
+    --lotto-bg-soft: #f7f7f8;
+    --lotto-sidebar: #f4f4f5;
+    --lotto-surface: #ffffff;
+    --lotto-surface-muted: #f7f7f8;
+    --lotto-fg: #111111;
+    --lotto-muted: #707070;
+    --lotto-muted-soft: #9a9aa3;
+    --lotto-border: #e5e5e5;
+    --lotto-border-strong: #d4d4d8;
+    --lotto-accent: #111111;
+    --lotto-accent-soft: #f0f0f2;
+
+    /* 10% semantic accents */
+    --lotto-excellent: #e8a070;
+    --lotto-excellent-soft: #f5d1b3;
+    --lotto-strong: #7aab8a;
+    --lotto-strong-soft: #e2e8d4;
+    --lotto-caution: #c4b56a;
+    --lotto-caution-soft: #f3efd8;
+    --lotto-delta: #2f5f3d;
+    --lotto-delta-bg: #e2e8d4;
+
+    --lotto-radius: 24px;
+    --lotto-radius-sm: 16px;
+    --lotto-radius-xs: 12px;
+    --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    --lotto-sidebar-width: 72px;
+    --lotto-sidebar-width-expanded: 200px;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background: var(--lotto-bg);
+    color: var(--lotto-fg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+@keyframes lotto-rise {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.lotto-bento > * {
+    animation: lotto-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.lotto-bento > *:nth-child(1) {
+    animation-delay: 0.04s;
+}
+.lotto-bento > *:nth-child(2) {
+    animation-delay: 0.08s;
+}
+.lotto-bento > *:nth-child(3) {
+    animation-delay: 0.12s;
+}
+.lotto-bento > *:nth-child(4) {
+    animation-delay: 0.16s;
+}
+.lotto-bento > *:nth-child(5) {
+    animation-delay: 0.2s;
+}
+.lotto-bento > *:nth-child(6) {
+    animation-delay: 0.24s;
+}
+.lotto-bento > *:nth-child(7) {
+    animation-delay: 0.28s;
+}
+.lotto-bento > *:nth-child(8) {
+    animation-delay: 0.32s;
+}
+
+.field-input {
+    width: 100%;
+    border-radius: 999px;
+    border: 1px solid var(--lotto-border);
+    background: var(--lotto-surface);
+    padding: 0.7rem 1.1rem;
+    font: inherit;
+    font-size: 0.925rem;
+    color: var(--lotto-fg);
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+textarea.field-input {
+    border-radius: var(--lotto-radius-sm);
+    resize: vertical;
+}
+
+.field-input::placeholder {
+    color: var(--lotto-muted-soft);
+}
+
+.field-input:focus {
+    border-color: var(--lotto-border-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lotto-bento > * {
+        animation: none !important;
+    }
+}

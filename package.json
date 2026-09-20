@@ -1,0 +1,28 @@
+{
+    "name": "lotto-fullstack",
+    "private": true,
+    "scripts": {
+        "build": "turbo run build",
+        "dev": "turbo run dev",
+        "lint": "turbo run lint",
+        "format": "prettier --write \"**/*.{ts,tsx,md,json,js,mjs,cjs}\"",
+        "format:check": "prettier --check \"**/*.{ts,tsx,md,json,js,mjs,cjs}\"",
+        "check-types": "turbo run check-types",
+        "prepare": "husky"
+    },
+    "devDependencies": {
+        "husky": "^9.1.7",
+        "lint-staged": "^15.5.2",
+        "prettier": "^3.9.4",
+        "turbo": "^2.10.3",
+        "typescript": "5.9.3"
+    },
+    "engines": {
+        "node": ">=18"
+    },
+    "packageManager": "npm@10.8.2",
+    "workspaces": [
+        "apps/*",
+        "packages/*"
+    ]
+}

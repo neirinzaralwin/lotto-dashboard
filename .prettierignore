@@ -1,0 +1,10 @@
+node_modules
+.next
+**/.next
+dist
+coverage
+.turbo
+build
+package-lock.json
+next-env.d.ts
+**/next-env.d.ts

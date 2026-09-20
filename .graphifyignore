@@ -1,0 +1,13 @@
+# Exclude non-code assets from initial AST graph builds so `graphify .`
+# works without an LLM API key. Re-run with `--backend claude-cli` (or
+# remove these lines) when you want semantic extraction of docs/images.
+docs/
+*.md
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+*.ico
+*.pdf
