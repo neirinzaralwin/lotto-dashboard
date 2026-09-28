@@ -21,6 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <body
                 className={`${dmSans.variable} antialiased`}
                 style={{ fontFamily: 'var(--font-dm-sans), var(--font-sans)' }}
+                suppressHydrationWarning
             >
                 <AppProviders>{children}</AppProviders>
             </body>

@@ -26,8 +26,7 @@ function matchesTextQuery(draw: Draw, q: string): boolean {
     const needle = q.toLowerCase();
     return (
         draw.drawNumber.toLowerCase().includes(needle) ||
-        draw.drawDate.toLowerCase().includes(needle) ||
-        (draw.prizeInfo ?? '').toLowerCase().includes(needle)
+        draw.drawDate.toLowerCase().includes(needle)
     );
 }
 

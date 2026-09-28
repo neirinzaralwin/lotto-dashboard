@@ -3,6 +3,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { mapDrawRow, normalizeDrawNumber, toDrawInsert, type DrawRow } from '@/lib/draws/map';
 import { maybeAutoNotifyOnPublish } from '@/lib/notifications';
 
+/** PostgREST/Supabase default max rows per request — page past it for full history. */
+const DRAWS_PAGE_SIZE = 1000;
+
 export type DrawListFilters = {
     lotteryType?: LotteryType | 'all';
     published?: 'all' | 'published' | 'draft';
@@ -21,45 +24,71 @@ async function quietAutoNotify(
     }
 }
 
+async function fetchAllRows<T>(
+    build: (
+        from: number,
+        to: number,
+    ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+    const all: T[] = [];
+    let from = 0;
+    for (;;) {
+        const { data, error } = await build(from, from + DRAWS_PAGE_SIZE - 1);
+        if (error) throw error;
+        const batch = data ?? [];
+        all.push(...batch);
+        if (batch.length < DRAWS_PAGE_SIZE) break;
+        from += DRAWS_PAGE_SIZE;
+    }
+    return all;
+}
+
 export async function listDraws(
     client: SupabaseClient,
     filters: DrawListFilters = {},
 ): Promise<Draw[]> {
-    let query = client.from('draws').select('*').order('draw_date', { ascending: false });
+    const rows = await fetchAllRows<DrawRow>(async (from, to) => {
+        let query = client
+            .from('draws')
+            .select('*')
+            .order('draw_date', { ascending: false })
+            .range(from, to);
 
-    if (filters.lotteryType && filters.lotteryType !== 'all') {
-        query = query.eq('lottery_type', filters.lotteryType);
-    }
-    if (filters.published === 'published') {
-        query = query.eq('is_published', true);
-    } else if (filters.published === 'draft') {
-        query = query.eq('is_published', false);
-    }
+        if (filters.lotteryType && filters.lotteryType !== 'all') {
+            query = query.eq('lottery_type', filters.lotteryType);
+        }
+        if (filters.published === 'published') {
+            query = query.eq('is_published', true);
+        } else if (filters.published === 'draft') {
+            query = query.eq('is_published', false);
+        }
 
-    const { data, error } = await query;
-    if (error) throw error;
-    let rows = (data as DrawRow[]).map(mapDrawRow);
+        return query;
+    });
+
+    let mapped = rows.map(mapDrawRow);
 
     const q = filters.search?.trim().toLowerCase();
     if (q) {
-        rows = rows.filter(
+        mapped = mapped.filter(
             (d) =>
                 d.drawNumber.toLowerCase().includes(q) ||
-                d.drawDate.toLowerCase().includes(q) ||
-                (d.prizeInfo ?? '').toLowerCase().includes(q),
+                d.drawDate.toLowerCase().includes(q),
         );
     }
 
-    return rows;
+    return mapped;
 }
 
 export async function getDrawOverview(client: SupabaseClient) {
-    const { data, error } = await client
-        .from('draws')
-        .select('*')
-        .order('updated_at', { ascending: false });
-    if (error) throw error;
-    const draws = (data as DrawRow[]).map(mapDrawRow);
+    const rows = await fetchAllRows<DrawRow>((from, to) =>
+        client
+            .from('draws')
+            .select('*')
+            .order('updated_at', { ascending: false })
+            .range(from, to),
+    );
+    const draws = rows.map(mapDrawRow);
     const lotto6 = draws.filter((d) => d.lotteryType === 'lotto6');
     const lotto7 = draws.filter((d) => d.lotteryType === 'lotto7');
     const published = draws.filter((d) => d.isPublished);
@@ -146,15 +175,16 @@ export async function listExistingDrawSummaries(
     client: SupabaseClient,
     lotteryType: LotteryType,
 ): Promise<Map<string, { drawDate: string }>> {
-    const { data, error } = await client
-        .from('draws')
-        .select('draw_number, draw_date')
-        .eq('lottery_type', lotteryType);
-    if (error) throw error;
+    const rows = await fetchAllRows<{ draw_number: string; draw_date: string }>((from, to) =>
+        client
+            .from('draws')
+            .select('draw_number, draw_date')
+            .eq('lottery_type', lotteryType)
+            .range(from, to),
+    );
     const map = new Map<string, { drawDate: string }>();
-    for (const row of data ?? []) {
-        const r = row as { draw_number: string; draw_date: string };
-        map.set(normalizeDrawNumber(r.draw_number), { drawDate: r.draw_date });
+    for (const row of rows) {
+        map.set(normalizeDrawNumber(row.draw_number), { drawDate: row.draw_date });
     }
     return map;
 }
@@ -207,11 +237,17 @@ export async function upsertDraws(
         ...toDrawInsert(r),
         draw_number: normalizeDrawNumber(r.drawNumber),
     }));
-    const { error, count } = await client.from('draws').upsert(payload, {
-        onConflict: 'lottery_type,draw_number',
-        count: 'exact',
-    });
-    if (error) throw error;
+
+    let upserted = 0;
+    for (let i = 0; i < payload.length; i += DRAWS_PAGE_SIZE) {
+        const chunk = payload.slice(i, i + DRAWS_PAGE_SIZE);
+        const { error, count } = await client.from('draws').upsert(chunk, {
+            onConflict: 'lottery_type,draw_number',
+            count: 'exact',
+        });
+        if (error) throw error;
+        upserted += count ?? chunk.length;
+    }
 
     const publishedByType = new Map<LotteryType, string>();
     for (const row of rows) {
@@ -222,5 +258,5 @@ export async function upsertDraws(
     for (const [lotteryType, drawNumber] of publishedByType) {
         await quietAutoNotify(client, lotteryType, drawNumber);
     }
-    return { upserted: count ?? payload.length };
+    return { upserted };
 }

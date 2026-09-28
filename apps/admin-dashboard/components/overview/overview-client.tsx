@@ -76,7 +76,7 @@ export function OverviewClient() {
                     icon: Sparkles,
                     title: t('overview.controlAlgorithms'),
                     body: t('overview.controlAlgorithmsBody'),
-                    meta: t('common.comingSoon'),
+                    meta: t('overview.controlAlgorithmsMeta'),
                 },
                 {
                     href: '/notifications',

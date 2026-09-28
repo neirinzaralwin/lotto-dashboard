@@ -35,7 +35,6 @@ import {
     setDrawsPublished,
     updateDraw,
 } from '@/lib/draws/draws-service';
-import { PRIZE_SUGGESTIONS } from '@/lib/draws/prize-suggestions';
 import { validateDrawNumbers } from '@/lib/draws/validate';
 
 const DRAWS_PAGE_SIZE = 20;
@@ -50,7 +49,6 @@ function emptyForm(type: LotteryType): DrawCreateInput {
         drawDate: new Date().toISOString().slice(0, 10),
         winningNumbers: type === 'lotto6' ? [0, 0, 0, 0, 0, 0] : [0, 0, 0, 0, 0, 0, 0],
         bonusNumbers: type === 'lotto6' ? [0] : [0, 0],
-        prizeInfo: '',
         isPublished: false,
     };
 }
@@ -102,7 +100,6 @@ function compareDraws(a: Draw, b: Draw, key: SortKey, dir: SortDir): number {
 }
 
 const STATUS_FILTER_IDS = ['all', 'published', 'draft'] as const;
-const PRIZE_FILTER_IDS = ['all', 'has', 'empty'] as const;
 
 export function DrawsManager() {
     const { t } = useI18n();
@@ -126,7 +123,6 @@ export function DrawsManager() {
     const [publishedFilter, setPublishedFilter] = useState<'all' | 'published' | 'draft'>(() =>
         statusFromSearch(searchParams.get('status')),
     );
-    const [prizeFilter, setPrizeFilter] = useState<'all' | 'has' | 'empty'>('all');
     const [form, setForm] = useState(emptyForm('lotto6'));
     const [editingId, setEditingId] = useState<string | null>(null);
     const [sheetOpen, setSheetOpen] = useState(false);
@@ -147,7 +143,6 @@ export function DrawsManager() {
     const numberMax = form.lotteryType === 'lotto6' ? 43 : 37;
     const mainCount = form.lotteryType === 'lotto6' ? 6 : 7;
     const bonusCount = form.lotteryType === 'lotto6' ? 1 : 2;
-    const prizeSuggestions = PRIZE_SUGGESTIONS[form.lotteryType];
 
     const reload = useCallback(async () => {
         setLoading(true);
@@ -176,7 +171,6 @@ export function DrawsManager() {
     }, [
         typeFilter,
         publishedFilter,
-        prizeFilter,
         query,
         mode,
         hasNumberFilter,
@@ -201,16 +195,6 @@ export function DrawsManager() {
         };
     }, [draws]);
 
-    const prizeCounts = useMemo(() => {
-        let has = 0;
-        let empty = 0;
-        for (const d of draws) {
-            if (d.prizeInfo?.trim()) has += 1;
-            else empty += 1;
-        }
-        return { all: draws.length, has, empty };
-    }, [draws]);
-
     const statusOptions = useMemo(
         () =>
             STATUS_FILTER_IDS.map((id) => ({
@@ -218,15 +202,6 @@ export function DrawsManager() {
                 count: statusCounts[id],
             })),
         [statusCounts],
-    );
-
-    const prizeOptions = useMemo(
-        () =>
-            PRIZE_FILTER_IDS.map((id) => ({
-                id,
-                count: prizeCounts[id],
-            })),
-        [prizeCounts],
     );
 
     const dateBounds = useMemo(() => {
@@ -263,9 +238,6 @@ export function DrawsManager() {
         if (publishedFilter === 'published') rows = rows.filter((d) => d.isPublished);
         else if (publishedFilter === 'draft') rows = rows.filter((d) => !d.isPublished);
 
-        if (prizeFilter === 'has') rows = rows.filter((d) => Boolean(d.prizeInfo?.trim()));
-        else if (prizeFilter === 'empty') rows = rows.filter((d) => !d.prizeInfo?.trim());
-
         if (selectedDateFrom && selectedDateTo) {
             rows = rows.filter(
                 (d) => d.drawDate >= selectedDateFrom && d.drawDate <= selectedDateTo,
@@ -285,7 +257,6 @@ export function DrawsManager() {
     }, [
         draws,
         publishedFilter,
-        prizeFilter,
         selectedDateFrom,
         selectedDateTo,
         hasNumberFilter,
@@ -364,7 +335,6 @@ export function DrawsManager() {
             drawDate: draw.drawDate,
             winningNumbers: [...draw.winningNumbers],
             bonusNumbers: [...draw.bonusNumbers],
-            prizeInfo: draw.prizeInfo ?? '',
             isPublished: draw.isPublished,
         });
         setFormError(null);
@@ -524,20 +494,6 @@ export function DrawsManager() {
                         }))}
                         value={publishedFilter}
                         onChange={setPublishedFilter}
-                    />
-                    <SegmentedFilter
-                        label={t('draws.prizeInfo')}
-                        options={prizeOptions.map((opt) => ({
-                            ...opt,
-                            label:
-                                opt.id === 'all'
-                                    ? t('common.all')
-                                    : opt.id === 'has'
-                                      ? t('draws.hasPrize')
-                                      : t('draws.empty'),
-                        }))}
-                        value={prizeFilter}
-                        onChange={setPrizeFilter}
                     />
                 </div>
 
@@ -875,40 +831,6 @@ export function DrawsManager() {
                             labelledBy="bonus-numbers-label"
                             onChange={(bonusNumbers) => setForm((f) => ({ ...f, bonusNumbers }))}
                         />
-                    </div>
-
-                    <label className="block space-y-1 text-sm">
-                        <span className="text-[var(--lotto-muted)]">{t('draws.prizeInfoOptional')}</span>
-                        <input
-                            value={form.prizeInfo ?? ''}
-                            onChange={(e) => setForm((f) => ({ ...f, prizeInfo: e.target.value }))}
-                            className="w-full rounded-xl border border-[var(--lotto-border)] bg-white px-3 py-2"
-                        />
-                    </label>
-
-                    <div className="flex flex-wrap gap-1.5">
-                        {prizeSuggestions.map((suggestion) => {
-                            const active = (form.prizeInfo ?? '') === suggestion;
-                            return (
-                                <button
-                                    key={suggestion}
-                                    type="button"
-                                    onClick={() =>
-                                        setForm((f) => ({
-                                            ...f,
-                                            prizeInfo: active ? '' : suggestion,
-                                        }))
-                                    }
-                                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                                        active
-                                            ? 'bg-[var(--lotto-fg)] text-white'
-                                            : 'bg-[var(--lotto-surface-muted)] text-[var(--lotto-muted)] hover:text-[var(--lotto-fg)]'
-                                    }`}
-                                >
-                                    {suggestion}
-                                </button>
-                            );
-                        })}
                     </div>
 
                     {formError ? <p className="text-sm text-[#b42318]">{formError}</p> : null}
