@@ -10,12 +10,14 @@ import { PageHeader } from '@/components/layout/page-header';
 import { TablePagination } from '@/components/layout/table-pagination';
 import { AppIcon } from '@/components/ui/icon';
 import { createClient } from '@/lib/supabase/client';
+import { getNotificationSettings, invokeSendPush } from '@/lib/notifications';
 import { listExistingDrawSummaries, upsertDraws } from '@/lib/draws/draws-service';
 import {
     downloadImportTemplate,
     IMPORT_TEMPLATE_LOTO6_HEADER,
     IMPORT_TEMPLATE_LOTO7_HEADER,
     importStatusLabelKey,
+    importTypesWithNewPublishedRows,
     mergeConflicts,
     parseLotteryWorkbookCollections,
     previewsToUpsertPayload,
@@ -55,6 +57,47 @@ function statusTone(status: ImportRowStatus): 'strong' | 'caution' | 'excellent'
             return 'caution';
         case 'invalid':
             return 'neutral';
+    }
+}
+
+/**
+ * Retention push after a bulk sheet import: games with genuinely new
+ * published draws (more rows than the database had) get one
+ * "<game> is available" push to **every** user (`target: 'all'`).
+ * Pure re-imports (nothing new) and draft saves stay silent. Never throws —
+ * the import already succeeded, so failures surface as a UI note.
+ */
+async function sendAvailabilityPush(
+    client: ReturnType<typeof createClient>,
+    previews: ImportPreview[],
+    publish: boolean,
+    translate: (key: string, params?: Record<string, string | number>) => string,
+): Promise<string | null> {
+    const freshTypes = importTypesWithNewPublishedRows(previews, publish);
+    if (freshTypes.length === 0) return null;
+    try {
+        const settings = await getNotificationSettings(client);
+        const enabled = freshTypes.filter((type) =>
+            type === 'lotto6' ? settings.autoNotifyLotto6 : settings.autoNotifyLotto7,
+        );
+        if (enabled.length === 0) return null;
+        const results = [];
+        for (const type of enabled) {
+            results.push(
+                await invokeSendPush(client, {
+                    title: translate('import.autoPushTitle', {
+                        game: translate(`common.${type}`),
+                    }),
+                    body: translate('import.autoPushBody'),
+                    target: 'all',
+                }),
+            );
+        }
+        return results.every((r) => r.ok)
+            ? translate('import.autoPushSent')
+            : translate('import.autoPushFailed');
+    } catch {
+        return translate('import.autoPushFailed');
     }
 }
 
@@ -151,6 +194,7 @@ export function ImportManager() {
         count: number;
         published: boolean;
         message: string;
+        pushNote: string | null;
     } | null>(null);
     const dragDepth = useRef(0);
 
@@ -309,7 +353,7 @@ export function ImportManager() {
                 return;
             }
             const client = createClient();
-            const { upserted } = await upsertDraws(client, payload);
+            const { upserted } = await upsertDraws(client, payload, { autoNotify: false });
             const counts = sumPreviewCounts(snapshot);
             const replaced = replace ? counts.updateCount : 0;
             const types = snapshot.map((p) => p.lotteryType);
@@ -331,6 +375,7 @@ export function ImportManager() {
                 count: upserted,
                 published: publish,
                 message,
+                pushNote: await sendAvailabilityPush(client, snapshot, publish, t),
             });
             setPreviews([]);
             setPreviewScope('all');
@@ -439,6 +484,11 @@ export function ImportManager() {
                     <p className="mt-1 max-w-md text-sm text-emerald-900/70">
                         {success.published ? t('import.liveForApp') : t('import.stayPrivate')}
                     </p>
+                    {success.pushNote ? (
+                        <p className="mt-1 max-w-md text-sm font-medium text-emerald-900">
+                            {success.pushNote}
+                        </p>
+                    ) : null}
                     <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
                         <button
                             type="button"

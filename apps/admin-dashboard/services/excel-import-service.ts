@@ -515,6 +515,21 @@ export function previewsToUpsertPayload(
     return previews.flatMap((p) => previewToUpsertPayload(p, options));
 }
 
+/**
+ * Lottery types gaining genuinely new published draws from an import.
+ *
+ * Each preview's `validCount` counts rows whose draw numbers are absent from
+ * the database ("more rows than before"). Draft saves never notify. The
+ * caller sends one "<game> is available" retention push per returned type.
+ */
+export function importTypesWithNewPublishedRows(
+    previews: ImportPreview[],
+    publish: boolean,
+): LotteryType[] {
+    if (!publish) return [];
+    return previews.filter((p) => p.validCount > 0).map((p) => p.lotteryType);
+}
+
 export function sumPreviewCounts(previews: ImportPreview[]) {
     return previews.reduce(
         (acc, p) => ({

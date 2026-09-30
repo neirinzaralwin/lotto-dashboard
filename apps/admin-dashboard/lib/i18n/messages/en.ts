@@ -341,6 +341,10 @@ export const en: MessageTree = {
         errSuperseded: 'Superseded by later row in file',
         parseFailed: 'Could not read this file',
         importFailed: 'Import failed',
+        autoPushTitle: '{game} is available',
+        autoPushBody: 'New results are published. Open the app to view the winning numbers.',
+        autoPushSent: 'Auto-push sent to all users.',
+        autoPushFailed: 'Saved, but the auto-push failed (push may not be configured).',
     },
     algorithms: {
         title: 'Algorithms',
@@ -353,6 +357,7 @@ export const en: MessageTree = {
         tabFavorite4: 'Favorite 4',
         systemPicksLabel: 'System picks',
         slotsHint: '{count} favorites',
+        sortAscending: 'Ascending order',
         favoriteN: 'Favorite {n}',
         readyCount: '{count} ready',
         awaitingPick: 'Awaiting pick',

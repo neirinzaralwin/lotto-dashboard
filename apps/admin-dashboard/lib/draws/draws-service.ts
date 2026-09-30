@@ -231,6 +231,7 @@ export async function setDrawsPublished(
 export async function upsertDraws(
     client: SupabaseClient,
     rows: DrawCreateInput[],
+    opts: { autoNotify?: boolean } = {},
 ): Promise<{ upserted: number }> {
     if (rows.length === 0) return { upserted: 0 };
     const payload = rows.map((r) => ({
@@ -255,8 +256,10 @@ export async function upsertDraws(
             publishedByType.set(row.lotteryType, normalizeDrawNumber(row.drawNumber));
         }
     }
-    for (const [lotteryType, drawNumber] of publishedByType) {
-        await quietAutoNotify(client, lotteryType, drawNumber);
+    if (opts.autoNotify !== false) {
+        for (const [lotteryType, drawNumber] of publishedByType) {
+            await quietAutoNotify(client, lotteryType, drawNumber);
+        }
     }
     return { upserted };
 }

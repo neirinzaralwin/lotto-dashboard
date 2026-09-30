@@ -340,6 +340,10 @@ export const ja: MessageTree = {
         errSuperseded: 'ファイル内の後の行で上書きされます',
         parseFailed: 'このファイルを読み込めませんでした',
         importFailed: 'インポートに失敗しました',
+        autoPushTitle: '{game}の最新結果が出ました',
+        autoPushBody: '新しい結果が公開されました。アプリで当せん番号をご確認ください。',
+        autoPushSent: '全ユーザーに自動プッシュを送信しました。',
+        autoPushFailed: '保存しましたが、自動プッシュに失敗しました（プッシュ未設定の可能性）。',
     },
     algorithms: {
         title: 'アルゴリズム',
@@ -352,6 +356,7 @@ export const ja: MessageTree = {
         tabFavorite4: 'お気に入り 4',
         systemPicksLabel: 'システム選定',
         slotsHint: '{count} セット',
+        sortAscending: '昇順で表示',
         favoriteN: 'お気に入り {n}',
         readyCount: '準備済み {count}',
         awaitingPick: '選定待ち',

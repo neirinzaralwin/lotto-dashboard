@@ -175,15 +175,17 @@ export function NotificationsManager() {
         setError(null);
         try {
             const client = createClient();
+            // Manual pushes always go to every user — no per-game targeting.
+            const payload = { ...draft, target: 'all' as const };
             if (formMode === 'create') {
-                const record = await createNotification(client, draft);
+                const record = await createNotification(client, payload);
                 setItems((prev) => [record, ...prev]);
                 setActiveId(record.id);
                 setFormMode('view');
                 setPage(1);
                 showFlash(t('notifications.draftCreated'));
             } else if (formMode === 'edit' && activeId) {
-                const record = await updateNotification(client, activeId, draft);
+                const record = await updateNotification(client, activeId, payload);
                 setItems((prev) => prev.map((n) => (n.id === activeId ? record : n)));
                 setFormMode('view');
                 showFlash(t('notifications.updatedFlash'));
@@ -549,41 +551,6 @@ export function NotificationsManager() {
                                 className="field-input"
                                 placeholder={t('notifications.placeholderBodyExample')}
                             />
-                        </Field>
-                        <Field label={t('notifications.target')}>
-                            <div className="inline-flex max-w-full flex-wrap rounded-full border border-[var(--lotto-border)] bg-[var(--lotto-surface-muted)] p-1">
-                                {(
-                                    [
-                                        { id: 'all' as const, label: t('notifications.targetAll') },
-                                        {
-                                            id: 'lotto6' as const,
-                                            label: t('common.lotto6'),
-                                        },
-                                        {
-                                            id: 'lotto7' as const,
-                                            label: t('common.lotto7'),
-                                        },
-                                    ] as const
-                                ).map((opt) => {
-                                    const activeTarget = draft.target === opt.id;
-                                    return (
-                                        <button
-                                            key={opt.id}
-                                            type="button"
-                                            onClick={() =>
-                                                setDraft((d) => ({ ...d, target: opt.id }))
-                                            }
-                                            className={`rounded-full px-3 py-1.5 text-sm transition-colors ${
-                                                activeTarget
-                                                    ? 'bg-[var(--lotto-fg)] font-semibold text-white'
-                                                    : 'font-medium text-[var(--lotto-muted)] hover:text-[var(--lotto-fg)]'
-                                            }`}
-                                        >
-                                            {opt.label}
-                                        </button>
-                                    );
-                                })}
-                            </div>
                         </Field>
                         {error ? <p className="text-sm text-[#b42318]">{error}</p> : null}
                         <div className="flex flex-wrap gap-2 pt-2">

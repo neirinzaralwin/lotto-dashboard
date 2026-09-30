@@ -80,6 +80,9 @@ export function AlgorithmsManager() {
     );
     const [busyKey, setBusyKey] = useState<string | null>(null);
     const [generating, setGenerating] = useState(false);
+    // View-only: display favorite numbers low to high. Off by default —
+    // stored/published order is never modified.
+    const [sortAscending, setSortAscending] = useState(false);
     const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(
         null,
     );
@@ -199,15 +202,38 @@ export function AlgorithmsManager() {
 
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <QuietText className="!text-sm">{t('algorithms.intro')}</QuietText>
-                <button
-                    type="button"
-                    disabled={generating || loading}
-                    onClick={() => void onGenerate()}
-                    className="inline-flex items-center gap-2 rounded-full bg-[var(--lotto-fg)] px-4 py-2 text-xs font-semibold tracking-tight text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                >
-                    <Sparkles size={14} aria-hidden />
-                    {generating ? t('algorithms.generating') : t('algorithms.generate')}
-                </button>
+                <div className="flex flex-wrap items-center gap-4">
+                    <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-tight text-[var(--lotto-muted)]">
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={sortAscending}
+                            aria-label={t('algorithms.sortAscending')}
+                            onClick={() => setSortAscending((v) => !v)}
+                            className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${
+                                sortAscending
+                                    ? 'bg-[var(--lotto-fg)]'
+                                    : 'bg-[var(--lotto-border-strong)]'
+                            }`}
+                        >
+                            <span
+                                className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                                    sortAscending ? 'translate-x-4' : 'translate-x-0'
+                                }`}
+                            />
+                        </button>
+                        {t('algorithms.sortAscending')}
+                    </span>
+                    <button
+                        type="button"
+                        disabled={generating || loading}
+                        onClick={() => void onGenerate()}
+                        className="inline-flex items-center gap-2 rounded-full bg-[var(--lotto-fg)] px-4 py-2 text-xs font-semibold tracking-tight text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                    >
+                        <Sparkles size={14} aria-hidden />
+                        {generating ? t('algorithms.generating') : t('algorithms.generate')}
+                    </button>
+                </div>
             </div>
 
             {error ? <p className="text-sm text-[#b42318]">{error}</p> : null}
@@ -271,6 +297,7 @@ export function AlgorithmsManager() {
                             locale={locale}
                             published={published}
                             busyKey={busyKey}
+                            sortAscending={sortAscending}
                             onTogglePublish={(slot) => void onTogglePublish(slot)}
                         />
                         <FavoritesBoard
@@ -279,6 +306,7 @@ export function AlgorithmsManager() {
                             locale={locale}
                             published={published}
                             busyKey={busyKey}
+                            sortAscending={sortAscending}
                             onTogglePublish={(slot) => void onTogglePublish(slot)}
                         />
                     </div>
@@ -294,6 +322,7 @@ function FavoritesBoard({
     locale,
     published,
     busyKey,
+    sortAscending,
     onTogglePublish,
 }: {
     lotteryType: LotteryType;
@@ -301,6 +330,7 @@ function FavoritesBoard({
     locale: string;
     published: Map<string, PublishedFavorite>;
     busyKey: string | null;
+    sortAscending: boolean;
     onTogglePublish: (slot: FavoriteSlot) => void;
 }) {
     const { t } = useI18n();
@@ -331,6 +361,7 @@ function FavoritesBoard({
                         locale={locale}
                         published={published}
                         busyKey={busyKey}
+                        sortAscending={sortAscending}
                         onTogglePublish={onTogglePublish}
                     />
                 ))}
@@ -344,16 +375,25 @@ function FavoriteTicket({
     locale,
     published,
     busyKey,
+    sortAscending,
     onTogglePublish,
 }: {
     slot: FavoriteSlot;
     locale: string;
     published: Map<string, PublishedFavorite>;
     busyKey: string | null;
+    sortAscending: boolean;
     onTogglePublish: (slot: FavoriteSlot) => void;
 }) {
     const { t } = useI18n();
     const ready = hasNumbers(slot);
+    // View-only ascending order — copies, never the stored arrays.
+    const mains = sortAscending
+        ? [...slot.winningNumbers].sort((a, b) => a - b)
+        : slot.winningNumbers;
+    const bonus = sortAscending
+        ? [...slot.bonusNumbers].sort((a, b) => a - b)
+        : slot.bonusNumbers;
     // Live DB state — not the computed flag. Publishing snapshots the
     // current mains + bonus to `recommendations` for the mobile app.
     const live = slot.algorithmName
@@ -393,9 +433,9 @@ function FavoriteTicket({
             {ready ? (
                 <>
                     <div className="mt-3.5 flex flex-wrap items-center gap-1.5 sm:gap-2">
-                        {slot.winningNumbers.map((n, i) => (
+                        {mains.map((n, i) => (
                             <NumberBall
-                                key={`${slot.lotteryType}-${slot.slot}-m-${i}`}
+                                key={`${slot.lotteryType}-${slot.slot}-m-${n}-${i}`}
                                 value={n}
                                 tone="ink"
                                 size="lg"
@@ -405,9 +445,9 @@ function FavoriteTicket({
                             className="mx-0.5 hidden h-6 w-px bg-[var(--lotto-border-strong)] sm:inline-block"
                             aria-hidden
                         />
-                        {slot.bonusNumbers.map((n, i) => (
+                        {bonus.map((n, i) => (
                             <NumberBall
-                                key={`${slot.lotteryType}-${slot.slot}-b-${i}`}
+                                key={`${slot.lotteryType}-${slot.slot}-b-${n}-${i}`}
                                 value={n}
                                 tone="excellent"
                                 size="lg"

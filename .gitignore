@@ -35,6 +35,10 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+# Firebase / GCP service account keys — never commit these.
+# Keep them in ~/.secrets/ (chmod 600) and reference by path only.
+*-firebase-adminsdk-*.json
+*-service-account*.json
 
 # Supabase
 supabase/.temp

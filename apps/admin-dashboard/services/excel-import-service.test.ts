@@ -4,11 +4,13 @@ import { describe, expect, it } from 'vitest';
 import {
     buildConflictSummary,
     buildImportTemplateBuffer,
+    importTypesWithNewPublishedRows,
     parseLotteryWorkbook,
     parseLotteryWorkbookCollections,
     previewToUpsertPayload,
     workbookBufferFromMatrix,
     workbookBufferFromSheets,
+    type ImportPreview,
     type ParsedImportRow,
 } from '@/services/excel-import-service';
 
@@ -338,5 +340,46 @@ describe('buildConflictSummary', () => {
 
     it('returns null when there are no update rows', () => {
         expect(buildConflictSummary([], new Map())).toBeNull();
+    });
+});
+
+describe('importTypesWithNewPublishedRows', () => {
+    const preview = (
+        lotteryType: ImportPreview['lotteryType'],
+        validCount: number,
+    ): ImportPreview => ({
+        lotteryType,
+        rows: [],
+        validCount,
+        updateCount: 0,
+        invalidCount: 0,
+        inFileDupeCount: 0,
+        fileDateFrom: null,
+        fileDateTo: null,
+        conflict: null,
+    });
+
+    it('returns games with new rows when publishing', () => {
+        expect(
+            importTypesWithNewPublishedRows(
+                [preview('lotto6', 3), preview('lotto7', 0)],
+                true,
+            ),
+        ).toEqual(['lotto6']);
+    });
+
+    it('returns empty when nothing is new (pure re-import)', () => {
+        expect(
+            importTypesWithNewPublishedRows(
+                [preview('lotto6', 0), preview('lotto7', 0)],
+                true,
+            ),
+        ).toEqual([]);
+    });
+
+    it('returns empty for draft saves even with new rows', () => {
+        expect(
+            importTypesWithNewPublishedRows([preview('lotto6', 5)], false),
+        ).toEqual([]);
     });
 });
