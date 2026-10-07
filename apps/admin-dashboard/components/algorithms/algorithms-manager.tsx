@@ -38,6 +38,8 @@ import { createClient } from '@/lib/supabase/client';
 
 type ThinkingTab = 'favorite1' | 'favorite2' | 'favorite3' | 'favorite4';
 
+const SORT_ASCENDING_METADATA_KEY = 'algorithms_sort_ascending';
+
 const hasNumbers = isSlotReady;
 
 function formatGeneratedAt(iso: string | null, locale: string): string | null {
@@ -81,11 +83,46 @@ export function AlgorithmsManager() {
     const [busyKey, setBusyKey] = useState<string | null>(null);
     const [generating, setGenerating] = useState(false);
     // View-only: display favorite numbers low to high. Off by default —
-    // stored/published order is never modified.
+    // stored/published order is never modified. Persisted per admin in
+    // Supabase Auth user_metadata (no localStorage).
     const [sortAscending, setSortAscending] = useState(false);
+    useEffect(() => {
+        let cancelled = false;
+        void (async () => {
+            try {
+                const supabase = createClient();
+                const { data } = await supabase.auth.getUser();
+                if (
+                    !cancelled &&
+                    data.user?.user_metadata?.[SORT_ASCENDING_METADATA_KEY] === true
+                ) {
+                    setSortAscending(true);
+                }
+            } catch {
+                /* demo / offline: in-memory only */
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
     const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(
         null,
     );
+
+    const onToggleSortAscending = useCallback(async () => {
+        const next = !sortAscending;
+        setSortAscending(next);
+        try {
+            const supabase = createClient();
+            const { error } = await supabase.auth.updateUser({
+                data: { [SORT_ASCENDING_METADATA_KEY]: next },
+            });
+            if (error) setSortAscending(!next);
+        } catch {
+            setSortAscending(!next);
+        }
+    }, [sortAscending]);
 
     const reload = useCallback(async () => {
         setLoading(true);
@@ -209,7 +246,7 @@ export function AlgorithmsManager() {
                             role="switch"
                             aria-checked={sortAscending}
                             aria-label={t('algorithms.sortAscending')}
-                            onClick={() => setSortAscending((v) => !v)}
+                            onClick={() => void onToggleSortAscending()}
                             className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${
                                 sortAscending
                                     ? 'bg-[var(--lotto-fg)]'

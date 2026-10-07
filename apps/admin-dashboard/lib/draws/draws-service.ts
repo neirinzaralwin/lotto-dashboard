@@ -98,8 +98,26 @@ export async function getDrawOverview(client: SupabaseClient) {
         lotto7Count: lotto7.length,
         publishedCount: published.length,
         draftCount: draws.length - published.length,
-        latest: draws.slice(0, 8),
+        latest: [pickLatestDraw(lotto6), pickLatestDraw(lotto7)].filter(
+            (d): d is Draw => d !== null,
+        ),
     };
+}
+
+/** True latest = highest numeric draw_number (fallback: newest draw_date). */
+function pickLatestDraw(draws: Draw[]): Draw | null {
+    if (draws.length === 0) return null;
+    return [...draws].sort((a, b) => {
+        const numDiff = parseDrawNumber(b.drawNumber) - parseDrawNumber(a.drawNumber);
+        if (numDiff !== 0) return numDiff;
+        return b.drawDate.localeCompare(a.drawDate);
+    })[0]!;
+}
+
+function parseDrawNumber(raw: string): number {
+    const match = raw.match(/(\d+)/);
+    if (!match?.[1]) return Number.NEGATIVE_INFINITY;
+    return Number.parseInt(match[1], 10);
 }
 
 export async function createDraw(client: SupabaseClient, input: DrawCreateInput): Promise<Draw> {

@@ -5,6 +5,7 @@ import {
     MIN_WINDOW,
     type WindowSizeResult,
 } from '@/lib/algorithms/dynamic-window';
+import { firstUnusedInOrder, unseenAscending } from '@/lib/algorithms/unique-pick';
 
 /** Historical constant. The window is now dynamic — see {@link computeWindowSize}. */
 export const FAVORITE_ONE_WINDOW = MIN_WINDOW;
@@ -73,24 +74,30 @@ function rankFrequencies(values: number[]): DigitFrequency[] {
         .sort((a, b) => b.count - a.count || a.digit - b.digit);
 }
 
+function numberMax(lotteryType: LotteryType): number {
+    return lotteryType === 'lotto6' ? 43 : 37;
+}
+
 function pickFromFrequencies(
     frequencies: DigitFrequency[],
     used: Set<number>,
+    max: number,
 ): { picked: number; mode: number; usedFallback: boolean } {
     if (frequencies.length === 0) {
         return { picked: 0, mode: 0, usedFallback: false };
     }
     const mode = frequencies[0]!.digit;
-    for (const freq of frequencies) {
-        if (!used.has(freq.digit)) {
-            return {
-                picked: freq.digit,
-                mode,
-                usedFallback: freq.digit !== mode,
-            };
-        }
-    }
-    return { picked: mode, mode, usedFallback: false };
+    const ranked = frequencies.map((f) => f.digit);
+    // Stay unique without leaving the algorithm: walk the mode ranking first,
+    // then numbers never seen in this column (all tied at count 0, smaller
+    // first — the same tie-break as the ranking), then the full ball range.
+    const picked = firstUnusedInOrder(
+        ranked,
+        unseenAscending(new Set(ranked), max),
+        used,
+        max,
+    );
+    return { picked, mode, usedFallback: picked > 0 && picked !== mode };
 }
 
 /**
@@ -106,6 +113,7 @@ export function computeFavoriteOne(
 ): FavoriteOneResult {
     const mains = mainCount(lotteryType);
     const bonuses = bonusCount(lotteryType);
+    const max = numberMax(lotteryType);
     const window = computeWindowSize(lotteryType, historyNewestFirst);
     const rows = window.rows;
     /** Algorithm walks oldest → newest for display; mode does not care about order. */
@@ -118,7 +126,7 @@ export function computeFavoriteOne(
     for (let col = 0; col < mains; col++) {
         const columnValues = chronological.map((r) => r.winningNumbers[col] ?? 0);
         const frequencies = rankFrequencies(columnValues);
-        const { picked, mode, usedFallback } = pickFromFrequencies(frequencies, used);
+        const { picked, mode, usedFallback } = pickFromFrequencies(frequencies, used, max);
         if (picked > 0) used.add(picked);
         winningNumbers.push(picked);
         columns.push({
@@ -135,11 +143,10 @@ export function computeFavoriteOne(
     for (let col = 0; col < bonuses; col++) {
         const columnValues = chronological.map((r) => r.bonusNumbers[col] ?? 0);
         const frequencies = rankFrequencies(columnValues);
-        // Bonus digits may overlap mains in some games; keep them independent of main `used`.
-        const bonusUsed = new Set<number>();
-        for (const n of bonusNumbers) if (n > 0) bonusUsed.add(n);
-        const { picked, mode, usedFallback } = pickFromFrequencies(frequencies, bonusUsed);
-        if (picked > 0) bonusUsed.add(picked);
+        // Bonus balls are drawn from the remaining balls, so they must avoid
+        // the mains as well as each other.
+        const { picked, mode, usedFallback } = pickFromFrequencies(frequencies, used, max);
+        if (picked > 0) used.add(picked);
         bonusNumbers.push(picked);
         columns.push({
             columnIndex: col,

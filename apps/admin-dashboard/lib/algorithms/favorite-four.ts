@@ -7,6 +7,7 @@ import {
     type DrawWindowRow,
 } from '@/lib/algorithms/favorite-one';
 import type { WindowSizeResult } from '@/lib/algorithms/dynamic-window';
+import { firstUnusedInOrder, unseenAscending } from '@/lib/algorithms/unique-pick';
 
 export const FAVORITE_FOUR_MIN_WINDOW = MIN_WINDOW;
 export const FAVORITE_FOUR_MAX_WINDOW = MAX_WINDOW;
@@ -46,24 +47,30 @@ function rankRarestFrequencies(values: number[]): DigitFrequency[] {
         .sort((a, b) => a.count - b.count || a.digit - b.digit);
 }
 
+function numberMax(lotteryType: LotteryType): number {
+    return lotteryType === 'lotto6' ? 43 : 37;
+}
+
 function pickRarest(
     frequencies: DigitFrequency[],
     used: Set<number>,
+    max: number,
 ): { picked: number; rarest: number; usedFallback: boolean } {
     if (frequencies.length === 0) {
         return { picked: 0, rarest: 0, usedFallback: false };
     }
     const rarest = frequencies[0]!.digit;
-    for (const freq of frequencies) {
-        if (!used.has(freq.digit)) {
-            return {
-                picked: freq.digit,
-                rarest,
-                usedFallback: freq.digit !== rarest,
-            };
-        }
-    }
-    return { picked: rarest, rarest, usedFallback: false };
+    const ranked = frequencies.map((f) => f.digit);
+    // Stay unique without leaving the algorithm: walk the rarest-first
+    // ranking, then numbers never seen in this column (true count 0, so
+    // rarest — smaller first, the same tie-break as the ranking).
+    const picked = firstUnusedInOrder(
+        ranked,
+        unseenAscending(new Set(ranked), max),
+        used,
+        max,
+    );
+    return { picked, rarest, usedFallback: picked > 0 && picked !== rarest };
 }
 
 /**
@@ -79,6 +86,7 @@ export function computeFavoriteFour(
 ): FavoriteFourResult {
     const mains = mainCount(lotteryType);
     const bonuses = bonusCount(lotteryType);
+    const max = numberMax(lotteryType);
     const window = computeWindowSize(lotteryType, historyNewestFirst);
     const rows = window.rows;
     /** Algorithm walks oldest → newest for display; rarest does not care about order. */
@@ -91,7 +99,7 @@ export function computeFavoriteFour(
     for (let col = 0; col < mains; col++) {
         const columnValues = chronological.map((r) => r.winningNumbers[col] ?? 0);
         const frequencies = rankRarestFrequencies(columnValues);
-        const { picked, rarest, usedFallback } = pickRarest(frequencies, used);
+        const { picked, rarest, usedFallback } = pickRarest(frequencies, used, max);
         if (picked > 0) used.add(picked);
         winningNumbers.push(picked);
         columns.push({
@@ -108,11 +116,10 @@ export function computeFavoriteFour(
     for (let col = 0; col < bonuses; col++) {
         const columnValues = chronological.map((r) => r.bonusNumbers[col] ?? 0);
         const frequencies = rankRarestFrequencies(columnValues);
-        // Bonus digits may overlap mains in some games; keep them independent of main `used`.
-        const bonusUsed = new Set<number>();
-        for (const n of bonusNumbers) if (n > 0) bonusUsed.add(n);
-        const { picked, rarest, usedFallback } = pickRarest(frequencies, bonusUsed);
-        if (picked > 0) bonusUsed.add(picked);
+        // Bonus balls are drawn from the remaining balls, so they must avoid
+        // the mains as well as each other.
+        const { picked, rarest, usedFallback } = pickRarest(frequencies, used, max);
+        if (picked > 0) used.add(picked);
         bonusNumbers.push(picked);
         columns.push({
             columnIndex: col,

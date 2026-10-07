@@ -7,6 +7,7 @@ import {
     scanDateTimeKey,
     type DateTimeScanRow,
 } from '@/lib/algorithms/favorite-two';
+import { firstUnusedInOrder } from '@/lib/algorithms/unique-pick';
 
 export type FavoriteThreeColumnTrace = {
     columnIndex: number;
@@ -64,21 +65,22 @@ function rankRarestFrequencies(
 function pickRarest(
     frequencies: DigitFrequency[],
     used: Set<number>,
+    max: number,
 ): { picked: number; rarest: number; usedFallback: boolean } {
     if (frequencies.length === 0) {
         return { picked: 0, rarest: 0, usedFallback: false };
     }
     const rarest = frequencies[0]!.digit;
-    for (const freq of frequencies) {
-        if (!used.has(freq.digit)) {
-            return {
-                picked: freq.digit,
-                rarest,
-                usedFallback: freq.digit !== rarest,
-            };
-        }
-    }
-    return { picked: rarest, rarest, usedFallback: false };
+    // The ranking already covers the whole key pool rarest-first (including
+    // never-seen candidates at count 0); only the full ball range remains as
+    // the safety net, and it still cannot repeat an already-picked number.
+    const picked = firstUnusedInOrder(
+        frequencies.map((f) => f.digit),
+        [],
+        used,
+        max,
+    );
+    return { picked, rarest, usedFallback: picked > 0 && picked !== rarest };
 }
 
 /**
@@ -111,7 +113,7 @@ export function computeFavoriteThree(
         usedSet: Set<number>,
     ): { trace: FavoriteThreeColumnTrace; picked: number } => {
         const frequencies = rankRarestFrequencies(columnValues, candidates);
-        const { picked, rarest, usedFallback } = pickRarest(frequencies, usedSet);
+        const { picked, rarest, usedFallback } = pickRarest(frequencies, usedSet, max);
         if (picked > 0) usedSet.add(picked);
         const histCount = columnValues.filter((v) => v === picked).length;
         return {
@@ -139,8 +141,9 @@ export function computeFavoriteThree(
 
     for (let col = 0; col < bonuses; col++) {
         const columnValues = chronological.map((r) => r.bonusNumbers[col] ?? 0);
-        const bonusUsed = new Set<number>(bonusNumbers.filter((n) => n > 0));
-        const { trace, picked } = buildColumn('bonus', col, columnValues, bonusUsed);
+        // Bonus balls are drawn from the remaining balls, so they must avoid
+        // the mains as well as each other.
+        const { trace, picked } = buildColumn('bonus', col, columnValues, used);
         bonusNumbers.push(picked);
         columns.push(trace);
     }

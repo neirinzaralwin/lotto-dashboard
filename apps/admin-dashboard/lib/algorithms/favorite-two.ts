@@ -5,6 +5,7 @@ import {
     digitalRootOfTime,
 } from '@/lib/algorithms/digital-root';
 import type { DigitFrequency, DrawWindowRow } from '@/lib/algorithms/favorite-one';
+import { firstUnusedInOrder } from '@/lib/algorithms/unique-pick';
 
 export type DateTimeScanRow = DrawWindowRow & {
     dateRoot: number;
@@ -66,21 +67,19 @@ function rankFrequencies(values: number[]): DigitFrequency[] {
 function pickFromFrequencies(
     frequencies: DigitFrequency[],
     used: Set<number>,
+    max: number,
+    extras: number[],
 ): { picked: number; mode: number; usedFallback: boolean } {
-    if (frequencies.length === 0) {
+    if (frequencies.length === 0 && extras.length === 0) {
         return { picked: 0, mode: 0, usedFallback: false };
     }
-    const mode = frequencies[0]!.digit;
-    for (const freq of frequencies) {
-        if (!used.has(freq.digit)) {
-            return {
-                picked: freq.digit,
-                mode,
-                usedFallback: freq.digit !== mode,
-            };
-        }
-    }
-    return { picked: mode, mode, usedFallback: false };
+    const mode = frequencies[0]?.digit ?? extras[0] ?? 0;
+    const ranked = frequencies.map((f) => f.digit);
+    // Stay unique without leaving the algorithm: walk the most-common
+    // ranking first, then key-matching balls never seen in this column
+    // (smaller first — the same tie-break as the ranking).
+    const picked = firstUnusedInOrder(ranked, extras, used, max);
+    return { picked, mode, usedFallback: picked > 0 && picked !== mode };
 }
 
 function annotate(row: DrawWindowRow): DateTimeScanRow {
@@ -144,6 +143,9 @@ export function computeFavoriteTwo(
 ): FavoriteTwoResult {
     const history = historyNewestFirst;
     const { scanRows, matchedRow, keyRoot } = scanDateTimeKey(history);
+    const max = numberMaxForType(lotteryType);
+    /** Every ball in range whose digital root equals the key. */
+    const pool = keyRoot == null ? [] : candidatesForKeyRoot(keyRoot, max);
     const mains = mainCount(lotteryType);
     const bonuses = bonusCount(lotteryType);
     const chronological = [...history].reverse();
@@ -165,7 +167,14 @@ export function computeFavoriteTwo(
                       (v) => v > 0 && digitalRootOfNumber(v) === keyRoot,
                   );
         const frequencies = rankFrequencies(eligibleValues);
-        const { picked, mode, usedFallback } = pickFromFrequencies(frequencies, usedSet);
+        const rankedSet = new Set(frequencies.map((f) => f.digit));
+        const extras = pool.filter((n) => !rankedSet.has(n));
+        const { picked, mode, usedFallback } = pickFromFrequencies(
+            frequencies,
+            usedSet,
+            max,
+            extras,
+        );
         if (picked > 0) usedSet.add(picked);
         return {
             picked,
@@ -191,8 +200,9 @@ export function computeFavoriteTwo(
 
     for (let col = 0; col < bonuses; col++) {
         const columnValues = chronological.map((r) => r.bonusNumbers[col] ?? 0);
-        const bonusUsed = new Set<number>(bonusNumbers.filter((n) => n > 0));
-        const { trace, picked } = buildColumn('bonus', col, columnValues, bonusUsed);
+        // Bonus balls are drawn from the remaining balls, so they must avoid
+        // the mains as well as each other.
+        const { trace, picked } = buildColumn('bonus', col, columnValues, used);
         bonusNumbers.push(picked);
         columns.push(trace);
     }
