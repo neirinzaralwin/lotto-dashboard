@@ -36,3 +36,27 @@ export function unseenAscending(seen: Set<number>, max: number): number[] {
     }
     return out;
 }
+
+/**
+ * Whole 1..max range ordered by how often each ball appears in `values`
+ * (ties break toward the smaller ball, matching the column rankings).
+ * Most-common flavors read it hottest-first, least-common flavors
+ * coldest-first, so the beyond-algorithm fallback still follows the
+ * algorithm's intent instead of converging on the same ascending fill.
+ */
+export function globalFrequencyOrder(
+    values: number[],
+    max: number,
+    rarestFirst: boolean,
+): number[] {
+    const counts = new Map<number, number>();
+    for (let n = 1; n <= max; n++) counts.set(n, 0);
+    for (const v of values) {
+        if (Number.isFinite(v) && v >= 1 && v <= max) {
+            counts.set(v, (counts.get(v) ?? 0) + 1);
+        }
+    }
+    return [...counts.entries()]
+        .sort((a, b) => (rarestFirst ? a[1] - b[1] : b[1] - a[1]) || a[0] - b[0])
+        .map(([n]) => n);
+}

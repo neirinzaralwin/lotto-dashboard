@@ -5,7 +5,7 @@ import {
     digitalRootOfTime,
 } from '@/lib/algorithms/digital-root';
 import type { DigitFrequency, DrawWindowRow } from '@/lib/algorithms/favorite-one';
-import { firstUnusedInOrder } from '@/lib/algorithms/unique-pick';
+import { firstUnusedInOrder, globalFrequencyOrder } from '@/lib/algorithms/unique-pick';
 
 export type DateTimeScanRow = DrawWindowRow & {
     dateRoot: number;
@@ -149,6 +149,16 @@ export function computeFavoriteTwo(
     const mains = mainCount(lotteryType);
     const bonuses = bonusCount(lotteryType);
     const chronological = [...history].reverse();
+    const hotMains = globalFrequencyOrder(
+        chronological.flatMap((r) => r.winningNumbers),
+        max,
+        false,
+    );
+    const hotBonus = globalFrequencyOrder(
+        chronological.flatMap((r) => r.bonusNumbers),
+        max,
+        false,
+    );
     const used = new Set<number>();
     const columns: FavoriteTwoColumnTrace[] = [];
     const winningNumbers: number[] = [];
@@ -159,6 +169,7 @@ export function computeFavoriteTwo(
         columnIndex: number,
         columnValues: number[],
         usedSet: Set<number>,
+        hot: number[],
     ): { trace: FavoriteTwoColumnTrace; picked: number } => {
         const eligibleValues =
             keyRoot == null
@@ -168,7 +179,13 @@ export function computeFavoriteTwo(
                   );
         const frequencies = rankFrequencies(eligibleValues);
         const rankedSet = new Set(frequencies.map((f) => f.digit));
-        const extras = pool.filter((n) => !rankedSet.has(n));
+        const poolSet = new Set(pool);
+        // Unseen key balls first (still in-key), then the globally hottest
+        // balls — the most-common analogue past the key pool.
+        const extras = [
+            ...pool.filter((n) => !rankedSet.has(n)),
+            ...hot.filter((n) => !rankedSet.has(n) && !poolSet.has(n)),
+        ];
         const { picked, mode, usedFallback } = pickFromFrequencies(
             frequencies,
             usedSet,
@@ -193,7 +210,7 @@ export function computeFavoriteTwo(
 
     for (let col = 0; col < mains; col++) {
         const columnValues = chronological.map((r) => r.winningNumbers[col] ?? 0);
-        const { trace, picked } = buildColumn('main', col, columnValues, used);
+        const { trace, picked } = buildColumn('main', col, columnValues, used, hotMains);
         winningNumbers.push(picked);
         columns.push(trace);
     }
@@ -202,7 +219,7 @@ export function computeFavoriteTwo(
         const columnValues = chronological.map((r) => r.bonusNumbers[col] ?? 0);
         // Bonus balls are drawn from the remaining balls, so they must avoid
         // the mains as well as each other.
-        const { trace, picked } = buildColumn('bonus', col, columnValues, used);
+        const { trace, picked } = buildColumn('bonus', col, columnValues, used, hotBonus);
         bonusNumbers.push(picked);
         columns.push(trace);
     }

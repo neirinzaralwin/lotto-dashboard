@@ -29,6 +29,19 @@ function staleHistory(main: number, bonus: number, mains: number): DrawWindowRow
     return Array.from({ length: 12 }, () => staleRow(main, bonus, mains));
 }
 
+function customHistory(mainsRows: number[][], bonus: number[]): DrawWindowRow[] {
+    return mainsRows.map((winningNumbers) => ({
+        drawNumber: '2139',
+        drawDate: '2026-09-23',
+        winningNumbers,
+        bonusNumbers: [bonus[0] ?? 0, bonus[1] ?? 0],
+    }));
+}
+
+function drawSet(winningNumbers: number[], bonusNumbers: number[]): string {
+    return [...winningNumbers, ...bonusNumbers].sort((a, b) => a - b).join(',');
+}
+
 function expectValidDraw(
     winningNumbers: number[],
     bonusNumbers: number[],
@@ -124,5 +137,57 @@ describe('favorite uniqueness repair', () => {
                 type === 'lotto6' ? 43 : 37,
             );
         }
+    });
+
+    it('Favorite 1 and Favorite 4 stay distinct flavors past exhaustion', () => {
+        // Column 0 mixes a globally hot ball (43) into all-5 columns. Both
+        // flavors consume the observed balls, but the fillers must differ:
+        // hottest-first vs coldest-first.
+        const rows = customHistory(
+            [
+                [43, 5, 5, 5, 5, 5],
+                [5, 5, 5, 5, 5, 5],
+                [43, 5, 5, 5, 5, 5],
+                [5, 5, 5, 5, 5, 5],
+                [43, 5, 5, 5, 5, 5],
+                [5, 5, 5, 5, 5, 5],
+                [43, 5, 5, 5, 5, 5],
+            ],
+            [9, 9],
+        );
+        const one = computeFavoriteOne('lotto6', rows, 'demo');
+        const four = computeFavoriteFour('lotto6', rows, 'demo');
+        expectValidDraw(one.winningNumbers, one.bonusNumbers, 6, 1, 43);
+        expectValidDraw(four.winningNumbers, four.bonusNumbers, 6, 1, 43);
+        expect(drawSet(one.winningNumbers, one.bonusNumbers)).not.toBe(
+            drawSet(four.winningNumbers, four.bonusNumbers),
+        );
+    });
+
+    it('Favorite 3 and Favorite 4 stay distinct flavors past the key pool', () => {
+        // Regression for identical tickets: the date/time key pool (4 balls
+        // for lotto7) is smaller than the 9 slots, so both flavors consume
+        // the whole pool — the fillers must then differ (hottest vs coldest).
+        const rows = customHistory(
+            [
+                [37, 6, 6, 6, 6, 6, 6],
+                [6, 6, 6, 6, 6, 6, 6],
+                [37, 6, 6, 6, 6, 6, 6],
+                [6, 6, 6, 6, 6, 6, 6],
+                [37, 6, 6, 6, 6, 6, 6],
+                [6, 6, 6, 6, 6, 6, 6],
+                [37, 6, 6, 6, 6, 6, 6],
+            ],
+            [37, 37],
+        );
+        const two = computeFavoriteTwo('lotto7', rows, 'demo');
+        const three = computeFavoriteThree('lotto7', rows, 'demo');
+        expect(two.keyRoot).toBe(6);
+        expect(three.keyRoot).toBe(6);
+        expectValidDraw(two.winningNumbers, two.bonusNumbers, 7, 2, 37);
+        expectValidDraw(three.winningNumbers, three.bonusNumbers, 7, 2, 37);
+        expect(drawSet(two.winningNumbers, two.bonusNumbers)).not.toBe(
+            drawSet(three.winningNumbers, three.bonusNumbers),
+        );
     });
 });

@@ -5,7 +5,7 @@ import {
     MIN_WINDOW,
     type WindowSizeResult,
 } from '@/lib/algorithms/dynamic-window';
-import { firstUnusedInOrder, unseenAscending } from '@/lib/algorithms/unique-pick';
+import { firstUnusedInOrder, globalFrequencyOrder } from '@/lib/algorithms/unique-pick';
 
 /** Historical constant. The window is now dynamic — see {@link computeWindowSize}. */
 export const FAVORITE_ONE_WINDOW = MIN_WINDOW;
@@ -82,18 +82,20 @@ function pickFromFrequencies(
     frequencies: DigitFrequency[],
     used: Set<number>,
     max: number,
+    hot: number[],
 ): { picked: number; mode: number; usedFallback: boolean } {
     if (frequencies.length === 0) {
         return { picked: 0, mode: 0, usedFallback: false };
     }
     const mode = frequencies[0]!.digit;
     const ranked = frequencies.map((f) => f.digit);
+    const rankedSet = new Set(ranked);
     // Stay unique without leaving the algorithm: walk the mode ranking first,
-    // then numbers never seen in this column (all tied at count 0, smaller
-    // first — the same tie-break as the ranking), then the full ball range.
+    // then the globally hottest balls (the mode-seeking analogue for balls
+    // this column never saw), then the full ball range as safety net.
     const picked = firstUnusedInOrder(
         ranked,
-        unseenAscending(new Set(ranked), max),
+        hot.filter((n) => !rankedSet.has(n)),
         used,
         max,
     );
@@ -118,6 +120,16 @@ export function computeFavoriteOne(
     const rows = window.rows;
     /** Algorithm walks oldest → newest for display; mode does not care about order. */
     const chronological = [...rows].reverse();
+    const hotMains = globalFrequencyOrder(
+        chronological.flatMap((r) => r.winningNumbers),
+        max,
+        false,
+    );
+    const hotBonus = globalFrequencyOrder(
+        chronological.flatMap((r) => r.bonusNumbers),
+        max,
+        false,
+    );
     const used = new Set<number>();
     const columns: ColumnPickTrace[] = [];
     const winningNumbers: number[] = [];
@@ -126,7 +138,12 @@ export function computeFavoriteOne(
     for (let col = 0; col < mains; col++) {
         const columnValues = chronological.map((r) => r.winningNumbers[col] ?? 0);
         const frequencies = rankFrequencies(columnValues);
-        const { picked, mode, usedFallback } = pickFromFrequencies(frequencies, used, max);
+        const { picked, mode, usedFallback } = pickFromFrequencies(
+            frequencies,
+            used,
+            max,
+            hotMains,
+        );
         if (picked > 0) used.add(picked);
         winningNumbers.push(picked);
         columns.push({
@@ -145,7 +162,12 @@ export function computeFavoriteOne(
         const frequencies = rankFrequencies(columnValues);
         // Bonus balls are drawn from the remaining balls, so they must avoid
         // the mains as well as each other.
-        const { picked, mode, usedFallback } = pickFromFrequencies(frequencies, used, max);
+        const { picked, mode, usedFallback } = pickFromFrequencies(
+            frequencies,
+            used,
+            max,
+            hotBonus,
+        );
         if (picked > 0) used.add(picked);
         bonusNumbers.push(picked);
         columns.push({

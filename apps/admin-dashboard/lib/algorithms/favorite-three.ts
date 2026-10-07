@@ -7,7 +7,7 @@ import {
     scanDateTimeKey,
     type DateTimeScanRow,
 } from '@/lib/algorithms/favorite-two';
-import { firstUnusedInOrder } from '@/lib/algorithms/unique-pick';
+import { firstUnusedInOrder, globalFrequencyOrder } from '@/lib/algorithms/unique-pick';
 
 export type FavoriteThreeColumnTrace = {
     columnIndex: number;
@@ -66,17 +66,20 @@ function pickRarest(
     frequencies: DigitFrequency[],
     used: Set<number>,
     max: number,
+    cold: number[],
 ): { picked: number; rarest: number; usedFallback: boolean } {
     if (frequencies.length === 0) {
         return { picked: 0, rarest: 0, usedFallback: false };
     }
     const rarest = frequencies[0]!.digit;
+    const ranked = frequencies.map((f) => f.digit);
+    const rankedSet = new Set(ranked);
     // The ranking already covers the whole key pool rarest-first (including
-    // never-seen candidates at count 0); only the full ball range remains as
-    // the safety net, and it still cannot repeat an already-picked number.
+    // never-seen candidates at count 0); past it, take the globally coldest
+    // balls — the rarest-seeking analogue — instead of an ascending fill.
     const picked = firstUnusedInOrder(
-        frequencies.map((f) => f.digit),
-        [],
+        ranked,
+        cold.filter((n) => !rankedSet.has(n)),
         used,
         max,
     );
@@ -101,6 +104,16 @@ export function computeFavoriteThree(
     const mains = mainCount(lotteryType);
     const bonuses = bonusCount(lotteryType);
     const chronological = [...history].reverse();
+    const coldMains = globalFrequencyOrder(
+        chronological.flatMap((r) => r.winningNumbers),
+        max,
+        true,
+    );
+    const coldBonus = globalFrequencyOrder(
+        chronological.flatMap((r) => r.bonusNumbers),
+        max,
+        true,
+    );
     const used = new Set<number>();
     const columns: FavoriteThreeColumnTrace[] = [];
     const winningNumbers: number[] = [];
@@ -111,9 +124,10 @@ export function computeFavoriteThree(
         columnIndex: number,
         columnValues: number[],
         usedSet: Set<number>,
+        cold: number[],
     ): { trace: FavoriteThreeColumnTrace; picked: number } => {
         const frequencies = rankRarestFrequencies(columnValues, candidates);
-        const { picked, rarest, usedFallback } = pickRarest(frequencies, usedSet, max);
+        const { picked, rarest, usedFallback } = pickRarest(frequencies, usedSet, max, cold);
         if (picked > 0) usedSet.add(picked);
         const histCount = columnValues.filter((v) => v === picked).length;
         return {
@@ -134,7 +148,7 @@ export function computeFavoriteThree(
 
     for (let col = 0; col < mains; col++) {
         const columnValues = chronological.map((r) => r.winningNumbers[col] ?? 0);
-        const { trace, picked } = buildColumn('main', col, columnValues, used);
+        const { trace, picked } = buildColumn('main', col, columnValues, used, coldMains);
         winningNumbers.push(picked);
         columns.push(trace);
     }
@@ -143,7 +157,7 @@ export function computeFavoriteThree(
         const columnValues = chronological.map((r) => r.bonusNumbers[col] ?? 0);
         // Bonus balls are drawn from the remaining balls, so they must avoid
         // the mains as well as each other.
-        const { trace, picked } = buildColumn('bonus', col, columnValues, used);
+        const { trace, picked } = buildColumn('bonus', col, columnValues, used, coldBonus);
         bonusNumbers.push(picked);
         columns.push(trace);
     }
