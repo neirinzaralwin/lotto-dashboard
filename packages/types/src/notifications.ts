@@ -26,3 +26,11 @@ export interface NotificationSettings {
     autoNotifyLotto7: boolean;
     updatedAt: string;
 }
+
+/** App-level public settings — legal document URLs shown in the mobile app. */
+export interface AppSettings {
+    id: string;
+    privacyPolicyUrl: string;
+    termsOfServiceUrl: string;
+    updatedAt: string;
+}

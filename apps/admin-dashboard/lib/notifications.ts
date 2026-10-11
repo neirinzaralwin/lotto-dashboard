@@ -13,3 +13,8 @@ export {
     type NotificationDraftInput,
     type SendPushResult,
 } from '@/lib/notifications/notifications-service';
+
+export {
+    getAppSettings,
+    saveAppSettings,
+} from '@/lib/settings/app-settings-service';

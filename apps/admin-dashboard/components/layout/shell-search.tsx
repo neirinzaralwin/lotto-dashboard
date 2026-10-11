@@ -14,7 +14,6 @@ export type ShellSearchMode = 'text' | 'numbers';
 
 export type ShellSearchNumbers = {
     mains: number[];
-    bonus: number[];
 };
 
 type ShellSearchContextValue = {
@@ -39,13 +38,13 @@ const ShellSearchContext = createContext<ShellSearchContextValue | null>(null);
 
 function emptySlots(type: LotteryType): ShellSearchNumbers {
     if (type === 'lotto6') {
-        return { mains: [0, 0, 0, 0, 0, 0], bonus: [0] };
+        return { mains: [0, 0, 0, 0, 0, 0] };
     }
-    return { mains: [0, 0, 0, 0, 0, 0, 0], bonus: [0, 0] };
+    return { mains: [0, 0, 0, 0, 0, 0, 0] };
 }
 
 function collectFilled(numbers: ShellSearchNumbers): number[] {
-    return [...numbers.mains, ...numbers.bonus].filter((n) => n > 0);
+    return numbers.mains.filter((n) => n > 0);
 }
 
 const fallback: ShellSearchContextValue = {
@@ -153,12 +152,14 @@ export function useShellSearch() {
     return ctx ?? fallback;
 }
 
-/** True when every filled ball appears in the draw's mains ∪ bonus. */
-export function drawContainsAllBalls(
+/** True when every filled ball appears in the draw's main numbers.
+ * Bonus balls are display-only: results still show them, but matching
+ * ignores them. */
+export function drawContainsAllMains(
     draw: { winningNumbers: number[]; bonusNumbers: number[] },
     balls: number[],
 ): boolean {
     if (balls.length === 0) return true;
-    const pool = new Set([...draw.winningNumbers, ...draw.bonusNumbers]);
+    const pool = new Set(draw.winningNumbers);
     return balls.every((n) => pool.has(n));
 }

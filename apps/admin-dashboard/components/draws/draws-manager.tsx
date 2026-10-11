@@ -23,7 +23,7 @@ import { NumberBall, StatusPill } from '@/components/bento/primitives';
 import { NumberOtpInput } from '@/components/draws/number-otp-input';
 import { SlideOver } from '@/components/layout/slide-over';
 import { TablePagination } from '@/components/layout/table-pagination';
-import { drawContainsAllBalls, useShellSearch } from '@/components/layout/shell-search';
+import { drawContainsAllMains, useShellSearch } from '@/components/layout/shell-search';
 import { AppIcon } from '@/components/ui/icon';
 import { IconAction } from '@/components/ui/icon-action';
 import { createClient } from '@/lib/supabase/client';
@@ -247,7 +247,7 @@ export function DrawsManager() {
         if (hasNumberFilter) {
             rows = rows.filter(
                 (d) =>
-                    d.lotteryType === numberType && drawContainsAllBalls(d, filledBalls),
+                    d.lotteryType === numberType && drawContainsAllMains(d, filledBalls),
             );
         }
 

@@ -6,4 +6,5 @@ export type {
     PushNotificationRecord,
     NotificationDraftInput,
     NotificationSettings,
+    AppSettings,
 } from './notifications.js';

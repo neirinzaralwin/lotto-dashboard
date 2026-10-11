@@ -3,12 +3,14 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
+import type { AppSettings } from '@repo/types';
 import { Eye, EyeOff } from 'lucide-react';
 import { LOCALES, type Locale } from '@/lib/i18n/types';
 import { useI18n } from '@/components/i18n/locale-provider';
 import { PageHeader } from '@/components/layout/page-header';
 import { AppIcon } from '@/components/ui/icon';
 import { createClient } from '@/lib/supabase/client';
+import { getAppSettings, saveAppSettings } from '@/lib/notifications';
 
 const MIN_PASSWORD_LENGTH = 8;
 const FLASH_MS = 5000;
@@ -32,6 +34,13 @@ export function SettingsClient() {
     const [sessionError, setSessionError] = useState<string | null>(null);
     const [sessionFlash, setSessionFlash] = useState<string | null>(null);
 
+    const [legalUrls, setLegalUrls] = useState<AppSettings | null>(null);
+    const [privacyUrl, setPrivacyUrl] = useState('');
+    const [termsUrl, setTermsUrl] = useState('');
+    const [legalBusy, setLegalBusy] = useState(false);
+    const [legalError, setLegalError] = useState<string | null>(null);
+    const [legalFlash, setLegalFlash] = useState<string | null>(null);
+
     useEffect(() => {
         void (async () => {
             const supabase = createClient();
@@ -39,6 +48,20 @@ export function SettingsClient() {
             setUser(data.user);
         })();
     }, []);
+
+    useEffect(() => {
+        void (async () => {
+            try {
+                const supabase = createClient();
+                const loaded = await getAppSettings(supabase);
+                setLegalUrls(loaded);
+                setPrivacyUrl(loaded.privacyPolicyUrl);
+                setTermsUrl(loaded.termsOfServiceUrl);
+            } catch {
+                setLegalError(t('settings.legalUrlsLoadFailed'));
+            }
+        })();
+    }, [t]);
 
     useEffect(() => {
         if (!passwordFlash) return;
@@ -148,6 +171,29 @@ export function SettingsClient() {
             setSessionError(t('settings.sessionActionFailed'));
         } finally {
             setSessionBusy(null);
+        }
+    }
+
+    async function onSaveLegalUrls() {
+        setLegalError(null);
+        setLegalFlash(null);
+        setLegalBusy(true);
+        try {
+            const supabase = createClient();
+            const current = legalUrls ?? (await getAppSettings(supabase));
+            const saved = await saveAppSettings(supabase, {
+                id: current.id,
+                privacyPolicyUrl: privacyUrl,
+                termsOfServiceUrl: termsUrl,
+            });
+            setLegalUrls(saved);
+            setPrivacyUrl(saved.privacyPolicyUrl);
+            setTermsUrl(saved.termsOfServiceUrl);
+            setLegalFlash(t('settings.legalUrlsSaved'));
+        } catch {
+            setLegalError(t('settings.legalUrlsSaveFailed'));
+        } finally {
+            setLegalBusy(false);
         }
     }
 
@@ -281,6 +327,53 @@ export function SettingsClient() {
                         {passwordBusy ? t('settings.changingPassword') : t('settings.changePassword')}
                     </button>
                 </form>
+            </section>
+
+            <section className="max-w-xl space-y-4 rounded-[var(--lotto-radius)] border border-[var(--lotto-border)] bg-[var(--lotto-surface)] p-5">
+                <div>
+                    <h2 className="text-sm font-semibold tracking-tight">{t('settings.legalUrls')}</h2>
+                    <p className="mt-1 text-sm text-[var(--lotto-muted)]">{t('settings.legalUrlsIntro')}</p>
+                </div>
+
+                <label className="block space-y-1.5 text-sm">
+                    <span className="text-[var(--lotto-muted)]">{t('settings.privacyPolicyUrl')}</span>
+                    <input
+                        type="url"
+                        inputMode="url"
+                        placeholder="https://…"
+                        value={privacyUrl}
+                        onChange={(e) => setPrivacyUrl(e.target.value)}
+                        className="w-full rounded-xl border border-[var(--lotto-border)] bg-white px-3 py-2 outline-none focus:border-[var(--lotto-border-strong)]"
+                    />
+                </label>
+
+                <label className="block space-y-1.5 text-sm">
+                    <span className="text-[var(--lotto-muted)]">{t('settings.termsOfServiceUrl')}</span>
+                    <input
+                        type="url"
+                        inputMode="url"
+                        placeholder="https://…"
+                        value={termsUrl}
+                        onChange={(e) => setTermsUrl(e.target.value)}
+                        className="w-full rounded-xl border border-[var(--lotto-border)] bg-white px-3 py-2 outline-none focus:border-[var(--lotto-border-strong)]"
+                    />
+                </label>
+
+                {legalError ? (
+                    <p className="text-sm text-[#b42318]">{legalError}</p>
+                ) : null}
+                {legalFlash ? (
+                    <p className="text-sm text-[var(--lotto-delta)]">{legalFlash}</p>
+                ) : null}
+
+                <button
+                    type="button"
+                    disabled={legalBusy}
+                    onClick={() => void onSaveLegalUrls()}
+                    className="rounded-full bg-[var(--lotto-fg)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                    {legalBusy ? t('settings.working') : t('notifications.saveSettings')}
+                </button>
             </section>
 
             <section className="max-w-xl space-y-4 rounded-[var(--lotto-radius)] border border-[var(--lotto-border)] bg-[var(--lotto-surface)] p-5">

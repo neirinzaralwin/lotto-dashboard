@@ -7,7 +7,7 @@ import type { Draw, LotteryType } from '@repo/types';
 import { useI18n } from '@/components/i18n/locale-provider';
 import { NumberOtpInput } from '@/components/draws/number-otp-input';
 import {
-    drawContainsAllBalls,
+    drawContainsAllMains,
     useShellSearch,
     type ShellSearchMode,
 } from '@/components/layout/shell-search';
@@ -117,7 +117,7 @@ export function ShellSearchOverlay({
         } else if (hasNumberFilter) {
             rows = rows
                 .filter((d) => d.lotteryType === numberType)
-                .filter((d) => drawContainsAllBalls(d, filledBalls));
+                .filter((d) => drawContainsAllMains(d, filledBalls));
         } else {
             rows = [];
         }
@@ -279,27 +279,11 @@ export function ShellSearchOverlay({
                                 size="sm"
                                 values={searchNumbers.mains}
                                 onChange={(mains) =>
-                                    setSearchNumbers({ ...searchNumbers, mains })
+                                    setSearchNumbers({ mains })
                                 }
                                 max={numberMax(numberType)}
                                 labelledBy="shell-search-mains"
                                 tone="main"
-                            />
-                            <p
-                                id="shell-search-bonus"
-                                className="text-[0.65rem] font-medium uppercase tracking-wide text-[var(--lotto-muted-soft)]"
-                            >
-                                {t('common.bonus')}
-                            </p>
-                            <NumberOtpInput
-                                size="sm"
-                                values={searchNumbers.bonus}
-                                onChange={(bonus) =>
-                                    setSearchNumbers({ ...searchNumbers, bonus })
-                                }
-                                max={numberMax(numberType)}
-                                labelledBy="shell-search-bonus"
-                                tone="bonus"
                             />
                         </div>
                     </div>
