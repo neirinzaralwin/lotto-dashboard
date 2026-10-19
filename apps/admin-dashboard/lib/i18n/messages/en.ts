@@ -375,7 +375,7 @@ export const en: MessageTree = {
         slight: 'Slight change · {diff}/{total}',
         changed: 'Changed · {diff}/{total}',
         numbersChanged: 'Numbers last changed {when}',
-        legend: 'Highlighted balls = the last real change (hover: old → new). The chip describes the latest recalculation; "Slight" = up to 2 balls or a third of the set.',
+        legend: 'Filled orange = changed in the latest recalculation (the chip). Orange outline = changed earlier; the latest recalculation only re-confirmed those numbers. Hover a ball: old → new. "Slight" = up to 2 balls or a third of the set.',
     },
     rangePreview: {
         title: 'Preview & rows used',

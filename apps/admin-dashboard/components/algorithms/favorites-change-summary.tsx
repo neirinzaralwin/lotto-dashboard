@@ -24,6 +24,8 @@ type Row = {
     total: number;
     current: number[];
     previous: number[] | null;
+    /** True when the latest recalculation itself produced new numbers. */
+    latestRun: boolean;
 };
 
 const SEEN_KEY = 'lotto-favorites-summary-seen-at';
@@ -72,7 +74,7 @@ export function FavoritesChangeSummary({
                 ? [...live.previousNumbers, ...(live.previousBonusNumbers ?? [])]
                 : null;
         if (!live) {
-            return { key: `${slot.lotteryType}-${slot.slot}`, slot, live, level: 'off', diff: 0, total: 0, current, previous };
+            return { key: `${slot.lotteryType}-${slot.slot}`, slot, live, level: 'off', diff: 0, total: 0, current, previous, latestRun: false };
         }
         const changedOnLastRun =
             previous != null && live.numbersChangedAt != null && live.numbersChangedAt === live.generatedAt;
@@ -86,6 +88,7 @@ export function FavoritesChangeSummary({
             total: current.length,
             current,
             previous,
+            latestRun: changedOnLastRun,
         };
     });
 
@@ -203,17 +206,22 @@ export function FavoritesChangeSummary({
                         {r.live ? (
                             <span className="flex flex-wrap items-center gap-1">
                                 {r.current.map((n, i) => {
-                                    // Highlight the last *real* change, even if a later run
-                                    // re-confirmed the same numbers.
-                                    const moved = r.previous != null && r.previous[i] !== n;
+                                    // Solid = changed in the latest recalculation (matches the chip).
+                                    // Outlined = changed in an earlier run; the latest run only
+                                    // re-confirmed these numbers (chip says Unchanged).
+                                    const differs = r.previous != null && r.previous[i] !== n;
+                                    const solid = differs && r.latestRun;
+                                    const outlined = differs && !r.latestRun;
                                     return (
                                         <span
                                             key={i}
-                                            title={moved ? `${r.previous?.[i] ?? '–'} → ${n}` : undefined}
+                                            title={differs ? `${r.previous?.[i] ?? '–'} → ${n}` : undefined}
                                             className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-xs font-semibold ${
-                                                moved
+                                                solid
                                                     ? 'bg-[var(--lotto-excellent)] text-[var(--lotto-fg)] ring-2 ring-[var(--lotto-fg)]/30'
-                                                    : 'bg-zinc-200 text-zinc-700'
+                                                    : outlined
+                                                      ? 'bg-white text-zinc-700 ring-2 ring-[var(--lotto-excellent)]'
+                                                      : 'bg-zinc-200 text-zinc-700'
                                             }`}
                                         >
                                             {n}
