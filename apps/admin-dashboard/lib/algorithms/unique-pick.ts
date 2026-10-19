@@ -60,3 +60,39 @@ export function globalFrequencyOrder(
         .sort((a, b) => (rarestFirst ? a[1] - b[1] : b[1] - a[1]) || a[0] - b[0])
         .map(([n]) => n);
 }
+
+/**
+ * Balls from the newest draw. A number that just came out is less likely to
+ * repeat next time, so the pickers treat these as already "used" and fall to
+ * their next-ranked candidate — the algorithm itself is unchanged.
+ */
+export function latestDrawBalls(
+    historyNewestFirst: { winningNumbers: number[]; bonusNumbers: number[] }[],
+): number[] {
+    const latest = historyNewestFirst[0];
+    if (!latest) return [];
+    return [...latest.winningNumbers, ...latest.bonusNumbers].filter((n) => n > 0);
+}
+
+export type PickOptions = {
+    /** Skip every ball of the newest draw (default off; the live service turns it on). */
+    excludeLatest?: boolean;
+    /** History range in rows (admin setting); each algorithm applies it its own way. */
+    window?: {
+        min: number;
+        max: number;
+        /**
+         * Exact number of draws to use (already inside Min–Max). When set it
+         * replaces the data-driven size. The live service draws a fresh random
+         * size in [Min, Max] on every regeneration.
+         */
+        size?: number;
+    };
+};
+
+/** Random whole number in [min, max]; `rng` is injectable for tests. */
+export function randomWindowSize(min: number, max: number, rng: () => number = Math.random): number {
+    const lo = Math.min(min, max);
+    const hi = Math.max(min, max);
+    return lo + Math.floor(rng() * (hi - lo + 1));
+}

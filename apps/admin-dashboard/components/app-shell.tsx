@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import {
     ArrowLeftToLine,
@@ -18,6 +19,7 @@ import {
 import { useI18n } from '@/components/i18n/locale-provider';
 import { AppIcon } from '@/components/ui/icon';
 import { ShellSearchOverlay } from '@/components/layout/shell-search-overlay';
+import { FavoritesRefreshToast } from '@/components/algorithms/favorites-refresh-toast';
 import { ShellSearchProvider, useShellSearch } from '@/components/layout/shell-search';
 import { createClient } from '@/lib/supabase/client';
 
@@ -47,7 +49,7 @@ function ShellFrame({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
     const { t } = useI18n();
-    const { query, setQuery, mode, open, setOpen, hasNumberFilter, filledBalls } = useShellSearch();
+    const { query, setQuery, open, setOpen, submitSearch } = useShellSearch();
     const searchAnchorRef = useRef<HTMLDivElement>(null);
     const [collapsed, setCollapsed] = useState(true);
     const [sidebarReady, setSidebarReady] = useState(false);
@@ -84,10 +86,7 @@ function ShellFrame({ children }: { children: React.ReactNode }) {
         });
     }
 
-    const triggerValue =
-        mode === 'numbers' && hasNumberFilter
-            ? t('nav.balls', { list: filledBalls.join(' · ') })
-            : query;
+    const triggerValue = query;
 
     async function signOut() {
         const supabase = createClient();
@@ -122,12 +121,15 @@ function ShellFrame({ children }: { children: React.ReactNode }) {
                         collapsed ? 'justify-center' : 'gap-2 px-0.5'
                     }`}
                 >
-                    <Link
-                        href="/"
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--lotto-radius-xs)] bg-[var(--lotto-fg)] text-[0.7rem] font-semibold tracking-tight text-white"
-                        title={t('brand.admin')}
-                    >
-                        L
+                    <Link href="/" className="shrink-0" title={t('brand.admin')}>
+                        <Image
+                            src="/icon-192.png"
+                            alt={t('brand.admin')}
+                            width={40}
+                            height={40}
+                            priority
+                            className="h-10 w-10 rounded-[var(--lotto-radius-xs)]"
+                        />
                     </Link>
                     {!collapsed ? (
                         <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">
@@ -217,12 +219,14 @@ function ShellFrame({ children }: { children: React.ReactNode }) {
                                 size={18}
                             />
                         </button>
-                        <Link
-                            href="/"
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--lotto-fg)] text-[0.65rem] font-semibold text-white md:hidden"
-                            aria-label={t('nav.home')}
-                        >
-                            L
+                        <Link href="/" className="shrink-0 md:hidden" aria-label={t('nav.home')}>
+                            <Image
+                                src="/icon-192.png"
+                                alt={t('brand.admin')}
+                                width={32}
+                                height={32}
+                                className="h-8 w-8 rounded-lg"
+                            />
                         </Link>
                         <Link
                             href="/settings"
@@ -246,13 +250,18 @@ function ShellFrame({ children }: { children: React.ReactNode }) {
                             <input
                                 value={triggerValue}
                                 onChange={(e) => {
-                                    if (mode === 'numbers') return;
-                                    setQuery(e.target.value);
+                                    setQuery(e.target.value.replace(/\D+/g, ''));
                                     setOpen(true);
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        submitSearch();
+                                        setOpen(true);
+                                    }
                                 }}
                                 onFocus={() => setOpen(true)}
                                 onClick={() => setOpen(true)}
-                                readOnly={mode === 'numbers'}
                                 placeholder={t('common.search')}
                                 aria-expanded={open}
                                 aria-haspopup="dialog"
@@ -266,6 +275,7 @@ function ShellFrame({ children }: { children: React.ReactNode }) {
                 <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-5 sm:px-6 sm:py-8 md:px-8 md:py-10">
                     {children}
                 </main>
+                <FavoritesRefreshToast />
             </div>
 
             <nav

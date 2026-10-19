@@ -1,6 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { onFavoritesRefreshed } from '@/lib/algorithms/favorites-events';
+import { formatExactTime } from '@/lib/algorithms/format-time';
+import { FavoritesChangeSummary } from '@/components/algorithms/favorites-change-summary';
+import { FavoriteRangeSetting } from '@/components/algorithms/favorite-range-setting';
+import {
+    DEFAULT_RANGES,
+    loadFavoriteRangesState,
+    type FavoriteRanges,
+} from '@/lib/algorithms/algorithm-settings';
 import { Sparkles } from 'lucide-react';
 import type { LotteryType } from '@repo/types';
 import { FavoriteOneThinking } from '@/components/algorithms/favorite-one-thinking';
@@ -27,6 +36,7 @@ import {
     generateAndPublishAllFavorites,
     isSlotReady,
     listAllFavoriteSlots,
+    errorMessage,
     loadPublishedFavorites,
     publishedKey,
     publishFavoriteSlot,
@@ -38,25 +48,19 @@ import { createClient } from '@/lib/supabase/client';
 
 type ThinkingTab = 'favorite1' | 'favorite2' | 'favorite3' | 'favorite4';
 
+const TAB_SLOT = { favorite1: 1, favorite2: 2, favorite3: 3, favorite4: 4 } as const;
+
 const SORT_ASCENDING_METADATA_KEY = 'algorithms_sort_ascending';
 
 const hasNumbers = isSlotReady;
 
-function formatGeneratedAt(iso: string | null, locale: string): string | null {
-    if (!iso) return null;
-    try {
-        return new Intl.DateTimeFormat(locale, {
-            dateStyle: 'medium',
-            timeStyle: 'short',
-        }).format(new Date(iso));
-    } catch {
-        return iso;
-    }
-}
+const formatGeneratedAt = formatExactTime;
 
 export function AlgorithmsManager() {
     const { t, locale } = useI18n();
     const [tab, setTab] = useState<ThinkingTab>('favorite1');
+    const [ranges, setRanges] = useState<FavoriteRanges>(DEFAULT_RANGES);
+    const [rangesReady, setRangesReady] = useState(true);
     const [lotto6, setLotto6] = useState<FavoriteSlot[]>([]);
     const [lotto7, setLotto7] = useState<FavoriteSlot[]>([]);
     const [thinkingOne, setThinkingOne] = useState<{
@@ -110,6 +114,24 @@ export function AlgorithmsManager() {
         null,
     );
 
+    const lastUpdated = formatGeneratedAt(
+        [...published.values()]
+            .map((p) => p.generatedAt)
+            .filter((v): v is string => Boolean(v))
+            .sort()
+            .at(-1) ?? null,
+        locale,
+    );
+
+    // Refresh the page when a draw change elsewhere re-publishes favourites.
+    useEffect(
+        () =>
+            onFavoritesRefreshed((r) => {
+                if (r.status === 'ok') void reloadRef.current?.(true);
+            }),
+        [],
+    );
+
     const onToggleSortAscending = useCallback(async () => {
         const next = !sortAscending;
         setSortAscending(next);
@@ -124,8 +146,9 @@ export function AlgorithmsManager() {
         }
     }, [sortAscending]);
 
-    const reload = useCallback(async () => {
-        setLoading(true);
+    /** `silent` keeps the page mounted (no "Loading…" flash) — used after saving a range. */
+    const reload = useCallback(async (silent = false) => {
+        if (!silent) setLoading(true);
         setError(null);
         try {
             let client = null;
@@ -134,7 +157,12 @@ export function AlgorithmsManager() {
             } catch {
                 client = null;
             }
-            const data = await listAllFavoriteSlots(client);
+            const [data, rangesState] = await Promise.all([
+                listAllFavoriteSlots(client),
+                loadFavoriteRangesState(client),
+            ]);
+            setRanges(rangesState.ranges);
+            setRangesReady(rangesState.ready);
             setLotto6(data.lotto6);
             setLotto7(data.lotto7);
             setThinkingOne(data.thinkingOne);
@@ -156,6 +184,8 @@ export function AlgorithmsManager() {
             setLoading(false);
         }
     }, [t]);
+    const reloadRef = useRef(reload);
+    reloadRef.current = reload;
 
     useEffect(() => {
         void reload();
@@ -179,7 +209,7 @@ export function AlgorithmsManager() {
                 setPublished(await loadPublishedFavorites(client));
             } catch (err) {
                 setNotice({
-                    text: err instanceof Error ? err.message : t('algorithms.publishFailed'),
+                    text: errorMessage(err, t('algorithms.publishFailed')),
                     error: true,
                 });
             } finally {
@@ -217,7 +247,7 @@ export function AlgorithmsManager() {
             });
         } catch (err) {
             setNotice({
-                text: err instanceof Error ? err.message : t('algorithms.generateFailed'),
+                text: errorMessage(err, t('algorithms.generateFailed')),
                 error: true,
             });
         } finally {
@@ -238,7 +268,14 @@ export function AlgorithmsManager() {
             />
 
             <div className="flex flex-wrap items-center justify-between gap-3">
-                <QuietText className="!text-sm">{t('algorithms.intro')}</QuietText>
+                <div className="space-y-1">
+                    <QuietText className="!text-sm">{t('algorithms.intro')}</QuietText>
+                    <p className="text-xs font-semibold tracking-tight text-[var(--lotto-fg)]">
+                        {lastUpdated
+                            ? t('algorithms.lastUpdated', { when: lastUpdated })
+                            : t('algorithms.neverUpdated')}
+                    </p>
+                </div>
                 <div className="flex flex-wrap items-center gap-4">
                     <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-tight text-[var(--lotto-muted)]">
                         <button
@@ -281,6 +318,10 @@ export function AlgorithmsManager() {
                 </StatusPill>
             ) : null}
 
+            {!loading && (lotto6.length > 0 || lotto7.length > 0) ? (
+                <FavoritesChangeSummary lotto6={lotto6} lotto7={lotto7} published={published} />
+            ) : null}
+
             {loading ? (
                 <p className="text-sm text-[var(--lotto-muted)]">{t('common.loading')}</p>
             ) : (
@@ -297,6 +338,13 @@ export function AlgorithmsManager() {
                         ]}
                         value={tab}
                         onChange={setTab}
+                    />
+
+                    <FavoriteRangeSetting
+                        slot={TAB_SLOT[tab]}
+                        saved={ranges[TAB_SLOT[tab]]}
+                        ready={rangesReady}
+                        onSaved={() => void reload(true)}
                     />
 
                     {tab === 'favorite1' && thinkingOne ? (
@@ -436,7 +484,8 @@ function FavoriteTicket({
     const live = slot.algorithmName
         ? published.get(publishedKey(slot.lotteryType, slot.algorithmName))
         : undefined;
-    const generated = formatGeneratedAt(live?.generatedAt ?? slot.generatedAt, locale);
+    // Only the DB timestamp is real; slot.generatedAt is just "computed now".
+    const generated = formatGeneratedAt(live?.generatedAt ?? null, locale);
     const busy = busyKey === (slot.algorithmName ? publishedKey(slot.lotteryType, slot.algorithmName) : null);
 
     return (
@@ -454,7 +503,9 @@ function FavoriteTicket({
                             {t('algorithms.favoriteN', { n: slot.slot })}
                         </p>
                         {slot.algorithmName ? (
-                            <p className="text-xs text-[var(--lotto-muted)]">{slot.algorithmName}</p>
+                            <p className="text-xs text-[var(--lotto-muted)]">
+                                {t(`algorithms.slotLabel${slot.slot}`)}
+                            </p>
                         ) : null}
                     </div>
                 </div>
@@ -491,11 +542,11 @@ function FavoriteTicket({
                             />
                         ))}
                     </div>
-                    {generated ? (
-                        <p className="mt-3 text-xs text-[var(--lotto-muted-soft)]">
-                            {t('algorithms.generatedAt', { when: generated })}
-                        </p>
-                    ) : null}
+                    <p className="mt-3 text-xs text-[var(--lotto-muted-soft)]">
+                        {generated
+                            ? t('algorithms.generatedAt', { when: generated })
+                            : t('algorithms.notPublishedYet')}
+                    </p>
                     <div className="mt-3">
                         <button
                             type="button"

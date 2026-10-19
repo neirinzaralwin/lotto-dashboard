@@ -4,10 +4,10 @@ import {
     candidatesForKeyRoot,
     demoFavoriteTwoHistory,
     numberMaxForType,
-    scanDateTimeKey,
+    scanKeyInRange,
     type DateTimeScanRow,
 } from '@/lib/algorithms/favorite-two';
-import { firstUnusedInOrder, globalFrequencyOrder } from '@/lib/algorithms/unique-pick';
+import { firstUnusedInOrder, globalFrequencyOrder, latestDrawBalls, type PickOptions } from '@/lib/algorithms/unique-pick';
 
 export type FavoriteThreeColumnTrace = {
     columnIndex: number;
@@ -34,6 +34,8 @@ export type FavoriteThreeResult = {
     winningNumbers: number[];
     bonusNumbers: number[];
     columns: FavoriteThreeColumnTrace[];
+    /** Balls of the newest draw skipped by the picker. */
+    excludedNumbers: number[];
     triggeredBy: 'draw' | 'import' | 'demo';
 };
 
@@ -95,9 +97,13 @@ export function computeFavoriteThree(
     lotteryType: LotteryType,
     historyNewestFirst: DrawWindowRow[],
     triggeredBy: FavoriteThreeResult['triggeredBy'] = 'demo',
+    options: PickOptions = {},
 ): FavoriteThreeResult {
-    const history = historyNewestFirst;
-    const { scanRows, matchedRow, keyRoot } = scanDateTimeKey(history);
+    const excludedNumbers = options.excludeLatest ? latestDrawBalls(historyNewestFirst) : [];
+    const { scanRows, matchedRow, keyRoot, history } = scanKeyInRange(
+        historyNewestFirst,
+        options.window,
+    );
     const max = numberMaxForType(lotteryType);
     const candidates =
         keyRoot == null ? [] : candidatesForKeyRoot(keyRoot, max);
@@ -114,7 +120,7 @@ export function computeFavoriteThree(
         max,
         true,
     );
-    const used = new Set<number>();
+    const used = new Set<number>(excludedNumbers);
     const columns: FavoriteThreeColumnTrace[] = [];
     const winningNumbers: number[] = [];
     const bonusNumbers: number[] = [];
@@ -172,6 +178,7 @@ export function computeFavoriteThree(
         bonusNumbers,
         columns,
         triggeredBy,
+        excludedNumbers,
     };
 }
 

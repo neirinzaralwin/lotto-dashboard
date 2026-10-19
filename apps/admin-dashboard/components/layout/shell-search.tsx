@@ -10,26 +10,40 @@ import {
 } from 'react';
 import type { LotteryType } from '@repo/types';
 
-export type ShellSearchMode = 'text' | 'numbers';
-
 export type ShellSearchNumbers = {
     mains: number[];
 };
 
+/** Draw-number query + main-number slots kept per game tab. */
+type ShellSearchTabState = {
+    /** What is typed — never filters by itself. */
+    query: string;
+    numbers: ShellSearchNumbers;
+    /** What was submitted (Search button / Enter) — drives results. */
+    applied: { query: string; balls: number[] };
+};
+
 type ShellSearchContextValue = {
+    /** Draft draw number bound to inputs. */
     query: string;
     setQuery: (value: string) => void;
-    mode: ShellSearchMode;
-    setMode: (mode: ShellSearchMode) => void;
-    numberType: LotteryType;
-    setNumberType: (type: LotteryType) => void;
+    /** Submitted draw number — filter with this, not `query`. */
+    appliedQuery: string;
+    /** Apply the current draft (query + balls). */
+    submitSearch: () => void;
+    /** True when the draft differs from what was last searched. */
+    dirty: boolean;
     searchNumbers: ShellSearchNumbers;
     setSearchNumbers: (next: ShellSearchNumbers) => void;
+    activeType: LotteryType;
+    setActiveType: (type: LotteryType) => void;
+    resetActive: () => void;
     open: boolean;
     setOpen: (open: boolean) => void;
     selectedDrawId: string | null;
     selectDraw: (id: string | null) => void;
     clearSelection: () => void;
+    /** Submitted balls. */
     filledBalls: number[];
     hasNumberFilter: boolean;
 };
@@ -37,10 +51,12 @@ type ShellSearchContextValue = {
 const ShellSearchContext = createContext<ShellSearchContextValue | null>(null);
 
 function emptySlots(type: LotteryType): ShellSearchNumbers {
-    if (type === 'lotto6') {
-        return { mains: [0, 0, 0, 0, 0, 0] };
-    }
-    return { mains: [0, 0, 0, 0, 0, 0, 0] };
+    const count = type === 'lotto6' ? 6 : 7;
+    return { mains: Array.from({ length: count }, () => 0) };
+}
+
+function emptyTab(type: LotteryType): ShellSearchTabState {
+    return { query: '', numbers: emptySlots(type), applied: { query: '', balls: [] } };
 }
 
 function collectFilled(numbers: ShellSearchNumbers): number[] {
@@ -50,12 +66,14 @@ function collectFilled(numbers: ShellSearchNumbers): number[] {
 const fallback: ShellSearchContextValue = {
     query: '',
     setQuery: () => undefined,
-    mode: 'text',
-    setMode: () => undefined,
-    numberType: 'lotto6',
-    setNumberType: () => undefined,
+    appliedQuery: '',
+    submitSearch: () => undefined,
+    dirty: false,
     searchNumbers: emptySlots('lotto6'),
     setSearchNumbers: () => undefined,
+    activeType: 'lotto6',
+    setActiveType: () => undefined,
+    resetActive: () => undefined,
     open: false,
     setOpen: () => undefined,
     selectedDrawId: null,
@@ -66,58 +84,91 @@ const fallback: ShellSearchContextValue = {
 };
 
 export function ShellSearchProvider({ children }: { children: ReactNode }) {
-    const [query, setQueryState] = useState('');
-    const [mode, setModeState] = useState<ShellSearchMode>('text');
-    const [numberType, setNumberTypeState] = useState<LotteryType>('lotto6');
-    const [searchNumbers, setSearchNumbersState] = useState<ShellSearchNumbers>(() =>
-        emptySlots('lotto6'),
-    );
+    const [tabs, setTabs] = useState<Record<LotteryType, ShellSearchTabState>>(() => ({
+        lotto6: emptyTab('lotto6'),
+        lotto7: emptyTab('lotto7'),
+    }));
+    const [activeType, setActiveTypeState] = useState<LotteryType>('lotto6');
     const [open, setOpen] = useState(false);
     const [selectedDrawId, setSelectedDrawId] = useState<string | null>(null);
 
     const clearSelection = useCallback(() => setSelectedDrawId(null), []);
 
+    const active = tabs[activeType];
+    const query = active.query;
+    const searchNumbers = active.numbers;
+
     const setQuery = useCallback(
         (value: string) => {
-            setQueryState(value);
+            setTabs((prev) => ({
+                ...prev,
+                [activeType]: { ...prev[activeType], query: value },
+            }));
             setSelectedDrawId(null);
         },
-        [],
+        [activeType],
     );
 
-    const setMode = useCallback((next: ShellSearchMode) => {
-        setModeState(next);
+    const setSearchNumbers = useCallback(
+        (next: ShellSearchNumbers) => {
+            setTabs((prev) => ({
+                ...prev,
+                [activeType]: { ...prev[activeType], numbers: next },
+            }));
+            setSelectedDrawId(null);
+        },
+        [activeType],
+    );
+
+    const setActiveType = useCallback((type: LotteryType) => {
+        setActiveTypeState(type);
         setSelectedDrawId(null);
     }, []);
 
-    const setNumberType = useCallback((type: LotteryType) => {
-        setNumberTypeState(type);
-        setSearchNumbersState(emptySlots(type));
+    const resetActive = useCallback(() => {
+        setTabs((prev) => ({ ...prev, [activeType]: emptyTab(activeType) }));
         setSelectedDrawId(null);
-    }, []);
-
-    const setSearchNumbers = useCallback((next: ShellSearchNumbers) => {
-        setSearchNumbersState(next);
-        setSelectedDrawId(null);
-    }, []);
+    }, [activeType]);
 
     const selectDraw = useCallback((id: string | null) => {
         setSelectedDrawId(id);
     }, []);
 
-    const filledBalls = useMemo(() => collectFilled(searchNumbers), [searchNumbers]);
-    const hasNumberFilter = mode === 'numbers' && filledBalls.length > 0;
+    const submitSearch = useCallback(() => {
+        setTabs((prev) => {
+            const tab = prev[activeType];
+            return {
+                ...prev,
+                [activeType]: {
+                    ...tab,
+                    applied: { query: tab.query.trim(), balls: collectFilled(tab.numbers) },
+                },
+            };
+        });
+        setSelectedDrawId(null);
+    }, [activeType]);
+
+    const appliedQuery = active.applied.query;
+    const filledBalls = active.applied.balls;
+    const hasNumberFilter = filledBalls.length > 0;
+    const draftBalls = collectFilled(searchNumbers);
+    const dirty =
+        query.trim() !== appliedQuery ||
+        draftBalls.length !== filledBalls.length ||
+        draftBalls.some((n, i) => n !== filledBalls[i]);
 
     const value = useMemo(
         () => ({
             query,
             setQuery,
-            mode,
-            setMode,
-            numberType,
-            setNumberType,
+            appliedQuery,
+            submitSearch,
+            dirty,
             searchNumbers,
             setSearchNumbers,
+            activeType,
+            setActiveType,
+            resetActive,
             open,
             setOpen,
             selectedDrawId,
@@ -129,12 +180,14 @@ export function ShellSearchProvider({ children }: { children: ReactNode }) {
         [
             query,
             setQuery,
-            mode,
-            setMode,
-            numberType,
-            setNumberType,
+            appliedQuery,
+            submitSearch,
+            dirty,
             searchNumbers,
             setSearchNumbers,
+            activeType,
+            setActiveType,
+            resetActive,
             open,
             selectedDrawId,
             selectDraw,

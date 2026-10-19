@@ -21,7 +21,6 @@ import {
 import { useI18n } from '@/components/i18n/locale-provider';
 import { MetricCard } from '@/components/layout/metric-card';
 import { PageHeader } from '@/components/layout/page-header';
-import { useShellSearch } from '@/components/layout/shell-search';
 import { SlideOver } from '@/components/layout/slide-over';
 import { TablePagination } from '@/components/layout/table-pagination';
 import { UnderlineTabs } from '@/components/layout/underline-tabs';
@@ -46,7 +45,6 @@ type TabKey = 'all' | 'draft' | 'sent' | 'settings';
 
 export function NotificationsManager() {
     const { t } = useI18n();
-    const { query } = useShellSearch();
     const [items, setItems] = useState<PushNotificationRecord[]>([]);
     const [settings, setSettings] = useState<NotificationSettings | null>(null);
     const [loading, setLoading] = useState(true);
@@ -94,21 +92,16 @@ export function NotificationsManager() {
     const filter = tab === 'settings' ? 'all' : tab;
 
     const filtered = useMemo(() => {
-        const q = query.trim().toLowerCase();
         return items
             .filter((n) => (filter === 'all' ? true : n.status === filter))
-            .filter((n) => {
-                if (!q) return true;
-                return n.title.toLowerCase().includes(q) || n.body.toLowerCase().includes(q);
-            })
             .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    }, [items, query, filter]);
+    }, [items, filter]);
 
     const pageCount = Math.max(1, Math.ceil(filtered.length / NOTIFICATIONS_PAGE_SIZE));
 
     useEffect(() => {
         setPage(1);
-    }, [tab, query]);
+    }, [tab]);
 
     useEffect(() => {
         if (page > pageCount) setPage(pageCount);

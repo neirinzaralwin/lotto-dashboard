@@ -13,8 +13,6 @@ import {
 import { useI18n } from '@/components/i18n/locale-provider';
 import { AppIcon } from '@/components/ui/icon';
 import {
-    FAVORITE_ONE_MAX_WINDOW,
-    FAVORITE_ONE_MIN_WINDOW,
     type ColumnPickTrace,
     type FavoriteOneResult,
 } from '@/lib/algorithms/favorite-one';
@@ -74,7 +72,7 @@ export function FavoriteOneThinking({ lotto6, lotto7 }: Props) {
                         step="02"
                         title={t('algorithms.stepWindowTitle')}
                         body={t('algorithms.stepWindowBody', {
-                            count: `${FAVORITE_ONE_MIN_WINDOW}–${FAVORITE_ONE_MAX_WINDOW}`,
+                            count: `${result.window.min}–${result.window.max}`,
                         })}
                     />
                     <TriggerStep
@@ -350,7 +348,7 @@ function WindowLockPanel({ result }: { result: FavoriteOneResult }) {
                 ) : null}
             </div>
             <QuietText className="!mt-1.5 !text-xs">
-                {t('algorithms.windowLockHint', { min: FAVORITE_ONE_MIN_WINDOW })}
+                {t('algorithms.windowLockHint', { min: result.window.min })}
             </QuietText>
             <ul className="mt-3 flex flex-wrap gap-1.5">
                 {result.window.columns.map((col) => (

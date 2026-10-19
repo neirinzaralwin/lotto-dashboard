@@ -104,13 +104,12 @@ const STATUS_FILTER_IDS = ['all', 'published', 'draft'] as const;
 export function DrawsManager() {
     const { t } = useI18n();
     const {
-        query,
-        mode,
+        appliedQuery: query,
         selectedDrawId,
         clearSelection,
+        activeType,
         hasNumberFilter,
         filledBalls,
-        numberType,
     } = useShellSearch();
     const searchParams = useSearchParams();
     const [draws, setDraws] = useState<Draw[]>([]);
@@ -150,9 +149,9 @@ export function DrawsManager() {
         try {
             const client = createClient();
             const rows = await listDraws(client, {
-                lotteryType: hasNumberFilter ? numberType : typeFilter,
+                lotteryType: query.trim() || hasNumberFilter ? activeType : typeFilter,
                 published: 'all',
-                search: mode === 'text' ? query : undefined,
+                search: query.trim() ? query : undefined,
             });
             setDraws(rows);
         } catch (err) {
@@ -160,7 +159,7 @@ export function DrawsManager() {
         } finally {
             setLoading(false);
         }
-    }, [typeFilter, query, mode, hasNumberFilter, numberType, t]);
+    }, [typeFilter, query, activeType, hasNumberFilter, t]);
 
     useEffect(() => {
         void reload();
@@ -172,10 +171,9 @@ export function DrawsManager() {
         typeFilter,
         publishedFilter,
         query,
-        mode,
+        activeType,
         hasNumberFilter,
         filledBalls,
-        numberType,
         sortKey,
         sortDir,
         dateRange,
@@ -244,10 +242,20 @@ export function DrawsManager() {
             );
         }
 
+        const q = query.trim().toLowerCase();
+        if (q) {
+            rows = rows.filter(
+                (d) =>
+                    d.lotteryType === activeType &&
+                    d.drawNumber.toLowerCase().includes(q),
+            );
+        }
+
         if (hasNumberFilter) {
             rows = rows.filter(
                 (d) =>
-                    d.lotteryType === numberType && drawContainsAllMains(d, filledBalls),
+                    d.lotteryType === activeType &&
+                    drawContainsAllMains(d, filledBalls),
             );
         }
 
@@ -259,8 +267,9 @@ export function DrawsManager() {
         publishedFilter,
         selectedDateFrom,
         selectedDateTo,
+        query,
+        activeType,
         hasNumberFilter,
-        numberType,
         filledBalls,
         sortKey,
         sortDir,
@@ -352,6 +361,14 @@ export function DrawsManager() {
 
     async function onSubmit(e: FormEvent) {
         e.preventDefault();
+        // Which button was pressed decides publish vs draft. Enter key → the
+        // form's first submit button (Publish now) unless the draft was already
+        // a draft being edited.
+        const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+        const publish = submitter
+            ? submitter.dataset.intent === 'publish'
+            : Boolean(form.isPublished);
+        const payload: DrawCreateInput = { ...form, isPublished: publish };
         const validation = validateDrawNumbers(
             form.lotteryType,
             form.winningNumbers,
@@ -366,9 +383,9 @@ export function DrawsManager() {
         try {
             const client = createClient();
             if (editingId) {
-                await updateDraw(client, editingId, form);
+                await updateDraw(client, editingId, payload);
             } else {
-                await createDraw(client, form);
+                await createDraw(client, payload);
             }
             closeSheet();
             await reload();
@@ -792,17 +809,6 @@ export function DrawsManager() {
                         />
                     </label>
 
-                    <label className="flex items-center gap-2 text-sm">
-                        <input
-                            type="checkbox"
-                            checked={!!form.isPublished}
-                            onChange={(e) =>
-                                setForm((f) => ({ ...f, isPublished: e.target.checked }))
-                            }
-                        />
-                        <span>{t('draws.publishedCheckbox')}</span>
-                    </label>
-
                     <div className="space-y-1.5 text-sm">
                         <p id="main-numbers-label" className="text-[var(--lotto-muted)]">
                             {t('draws.mainNumbersCount', { count: mainCount, max: numberMax })}
@@ -838,14 +844,27 @@ export function DrawsManager() {
                     <div className="flex flex-wrap gap-2 border-t border-[var(--lotto-border)] pt-5">
                         <button
                             type="submit"
+                            data-intent="publish"
                             disabled={saving}
-                            className="rounded-full bg-[var(--lotto-fg)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--lotto-fg)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
                         >
+                            <AppIcon icon={Globe} size={15} />
                             {saving
                                 ? t('common.saving')
-                                : editingId
-                                  ? t('draws.updateDraw')
-                                  : t('draws.createDraw')}
+                                : editingId && form.isPublished
+                                  ? t('draws.updatePublished')
+                                  : t('draws.publishNow')}
+                        </button>
+                        <button
+                            type="submit"
+                            data-intent="draft"
+                            disabled={saving}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--lotto-border)] px-4 py-2.5 text-sm font-semibold text-[var(--lotto-fg)] hover:bg-[var(--lotto-surface-muted)] disabled:opacity-60"
+                        >
+                            <AppIcon icon={EyeOff} size={15} />
+                            {editingId && form.isPublished
+                                ? t('draws.unpublishToDraft')
+                                : t('draws.saveDraft')}
                         </button>
                         <button
                             type="button"

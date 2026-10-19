@@ -23,8 +23,17 @@ import {
     type FavoriteThreeResult,
 } from '@/lib/algorithms/favorite-three';
 import { mapDrawRow, type DrawRow } from '@/lib/draws/map';
+import {
+    DEFAULT_RANGES,
+    getFavoriteRanges,
+    type FavoriteRange,
+} from '@/lib/algorithms/algorithm-settings';
+import { randomWindowSize, type PickOptions } from '@/lib/algorithms/unique-pick';
 
 export const FAVORITES_PER_TYPE = 4;
+
+/** Live picks skip the newest draw's balls (they rarely repeat next draw). */
+export const LIVE_OPTIONS: PickOptions = { excludeLatest: true };
 
 /** Dynamic window bounds for Favorites 1 and 2. */
 export const FAVORITE_WINDOW_MIN = MIN_WINDOW;
@@ -51,107 +60,92 @@ function toWindowRow(row: DrawRow): DrawWindowRow {
     };
 }
 
-/**
- * Fetches the deepest slice the dynamic window can ever need (MAX_WINDOW).
- * Favorites 1 and 2 size their own window from these rows, so a short history
- * is not a failure — computeWindowSize clamps down and flags shortHistory.
- */
-async function fetchLatestDrawWindow(
+/** Newest published draws, up to `limit` (the slot's range max). */
+export async function fetchLatestPublished(
     client: SupabaseClient,
     lotteryType: LotteryType,
+    limit: number,
 ): Promise<DrawWindowRow[] | null> {
     const { data, error } = await client
         .from('draws')
         .select('*')
         .eq('lottery_type', lotteryType)
+        // Drafts may be mistyped or not yet announced — never let them shape picks.
+        .eq('is_published', true)
         .order('draw_date', { ascending: false })
         .order('draw_number', { ascending: false })
-        .limit(MAX_WINDOW);
+        .limit(limit);
     if (error) throw error;
     const rows = (data ?? []) as DrawRow[];
     if (rows.length === 0) return null;
     return rows.map(toWindowRow);
 }
 
-async function fetchAllDrawHistory(
-    client: SupabaseClient,
+type Loader<R> = (
     lotteryType: LotteryType,
-): Promise<DrawWindowRow[] | null> {
-    const { data, error } = await client
-        .from('draws')
-        .select('*')
-        .eq('lottery_type', lotteryType)
-        .order('draw_date', { ascending: false })
-        .order('draw_number', { ascending: false })
-        .limit(500);
-    if (error) throw error;
-    const rows = (data ?? []) as DrawRow[];
-    if (rows.length === 0) return null;
-    return rows.map(toWindowRow);
-}
+    history: DrawWindowRow[],
+    triggeredBy: 'draw' | 'demo',
+    options: PickOptions,
+) => R;
 
-export async function loadFavoriteOneThinking(
+async function loadThinking<R>(
     client: SupabaseClient | null,
     lotteryType: LotteryType,
+    range: FavoriteRange,
+    compute: Loader<R>,
+    demo: (t: LotteryType) => DrawWindowRow[],
+): Promise<R> {
+    if (client) {
+        try {
+            const live = await fetchLatestPublished(client, lotteryType, range.max);
+            if (live && live.length > 0) {
+                // Each regeneration draws a fresh random history size inside Min–Max.
+                return compute(lotteryType, live, 'draw', {
+                    ...LIVE_OPTIONS,
+                    window: { ...range, size: randomWindowSize(range.min, range.max) },
+                });
+            }
+        } catch {
+            /* demo */
+        }
+    }
+    return compute(lotteryType, demo(lotteryType), 'demo', { window: range });
+}
+
+/** Slot 1 (Favorite 1 tab): dynamic-window mode. */
+export function loadFavoriteOneThinking(
+    client: SupabaseClient | null,
+    lotteryType: LotteryType,
+    range: FavoriteRange = DEFAULT_RANGES[1],
 ): Promise<FavoriteOneResult> {
-    if (client) {
-        try {
-            const live = await fetchLatestDrawWindow(client, lotteryType);
-            if (live) return computeFavoriteOne(lotteryType, live, 'draw');
-        } catch {
-            /* demo */
-        }
-    }
-    return computeFavoriteOne(lotteryType, demoDrawWindow(lotteryType), 'demo');
+    return loadThinking(client, lotteryType, range, computeFavoriteOne, demoDrawWindow);
 }
 
-export async function loadFavoriteTwoThinking(
+/** Slot 3 (Favorite 3 tab): Date/Time key, most common. */
+export function loadFavoriteTwoThinking(
     client: SupabaseClient | null,
     lotteryType: LotteryType,
+    range: FavoriteRange = DEFAULT_RANGES[3],
 ): Promise<FavoriteTwoResult> {
-    if (client) {
-        try {
-            const live = await fetchAllDrawHistory(client, lotteryType);
-            if (live && live.length > 0) {
-                return computeFavoriteTwo(lotteryType, live, 'draw');
-            }
-        } catch {
-            /* demo */
-        }
-    }
-    return computeFavoriteTwo(lotteryType, demoFavoriteTwoHistory(lotteryType), 'demo');
+    return loadThinking(client, lotteryType, range, computeFavoriteTwo, demoFavoriteTwoHistory);
 }
 
-export async function loadFavoriteFourThinking(
+/** Slot 2 (Favorite 2 tab): dynamic-window rarest. */
+export function loadFavoriteFourThinking(
     client: SupabaseClient | null,
     lotteryType: LotteryType,
+    range: FavoriteRange = DEFAULT_RANGES[2],
 ): Promise<FavoriteFourResult> {
-    if (client) {
-        try {
-            const live = await fetchLatestDrawWindow(client, lotteryType);
-            if (live) return computeFavoriteFour(lotteryType, live, 'draw');
-        } catch {
-            /* demo */
-        }
-    }
-    return computeFavoriteFour(lotteryType, demoFavoriteFourWindow(lotteryType), 'demo');
+    return loadThinking(client, lotteryType, range, computeFavoriteFour, demoFavoriteFourWindow);
 }
 
-export async function loadFavoriteThreeThinking(
+/** Slot 4 (Favorite 4 tab): Date/Time key, least common. */
+export function loadFavoriteThreeThinking(
     client: SupabaseClient | null,
     lotteryType: LotteryType,
+    range: FavoriteRange = DEFAULT_RANGES[4],
 ): Promise<FavoriteThreeResult> {
-    if (client) {
-        try {
-            const live = await fetchAllDrawHistory(client, lotteryType);
-            if (live && live.length > 0) {
-                return computeFavoriteThree(lotteryType, live, 'draw');
-            }
-        } catch {
-            /* demo */
-        }
-    }
-    return computeFavoriteThree(lotteryType, demoFavoriteThreeHistory(lotteryType), 'demo');
+    return loadThinking(client, lotteryType, range, computeFavoriteThree, demoFavoriteThreeHistory);
 }
 
 function slotFromNumbers(
@@ -182,20 +176,21 @@ export async function listAllFavoriteSlots(client: SupabaseClient | null): Promi
     thinkingThree: { lotto6: FavoriteThreeResult; lotto7: FavoriteThreeResult };
     thinkingFour: { lotto6: FavoriteFourResult; lotto7: FavoriteFourResult };
 }> {
+    const ranges = await getFavoriteRanges(client);
     const [one6, one7, two6, two7, three6, three7, four6, four7] = await Promise.all([
-        loadFavoriteOneThinking(client, 'lotto6'),
-        loadFavoriteOneThinking(client, 'lotto7'),
-        loadFavoriteTwoThinking(client, 'lotto6'),
-        loadFavoriteTwoThinking(client, 'lotto7'),
-        loadFavoriteThreeThinking(client, 'lotto6'),
-        loadFavoriteThreeThinking(client, 'lotto7'),
-        loadFavoriteFourThinking(client, 'lotto6'),
-        loadFavoriteFourThinking(client, 'lotto7'),
+        loadFavoriteOneThinking(client, 'lotto6', ranges[1]),
+        loadFavoriteOneThinking(client, 'lotto7', ranges[1]),
+        loadFavoriteTwoThinking(client, 'lotto6', ranges[3]),
+        loadFavoriteTwoThinking(client, 'lotto7', ranges[3]),
+        loadFavoriteThreeThinking(client, 'lotto6', ranges[4]),
+        loadFavoriteThreeThinking(client, 'lotto7', ranges[4]),
+        loadFavoriteFourThinking(client, 'lotto6', ranges[2]),
+        loadFavoriteFourThinking(client, 'lotto7', ranges[2]),
     ]);
 
     /**
      * Slot order is the product decision, the algorithm modules are not:
-     * 1 = 7-draw mode, 2 = 7-draw rarest, 3 = key most common, 4 = key least common.
+     * 1 = 7–20-draw mode, 2 = 7–20-draw rarest, 3 = key most common, 4 = key least common.
      */
     const slotsFor = (
         type: LotteryType,
@@ -259,7 +254,13 @@ export type PublishedFavorite = {
     algorithmName: string;
     winningNumbers: number[];
     bonusNumbers: number[];
+    /** Last recalculation (every refresh writes a new row). */
     generatedAt: string | null;
+    /** When the numbers themselves last differed from the previous set. */
+    numbersChangedAt: string | null;
+    /** The set shown before the last real change (null = first publish). */
+    previousNumbers: number[] | null;
+    previousBonusNumbers: number[] | null;
 };
 
 export function publishedKey(lotteryType: LotteryType, algorithmName: string): string {
@@ -270,6 +271,9 @@ type RecommendationRow = {
     numbers: number[];
     bonus_numbers?: number[] | null;
     generated_at: string | null;
+    numbers_changed_at?: string | null;
+    previous_numbers?: number[] | null;
+    previous_bonus_numbers?: number[] | null;
     lottery_type: LotteryType;
     algorithms:
         | { name: string; lottery_type: LotteryType }
@@ -296,6 +300,9 @@ export async function loadPublishedFavorites(
             winningNumbers: [...(row.numbers ?? [])],
             bonusNumbers: [...(row.bonus_numbers ?? [])],
             generatedAt: row.generated_at,
+            numbersChangedAt: row.numbers_changed_at ?? row.generated_at,
+            previousNumbers: row.previous_numbers ?? null,
+            previousBonusNumbers: row.previous_bonus_numbers ?? null,
         });
     }
     return out;
@@ -323,34 +330,76 @@ async function ensureAlgorithmId(
     return (created as { id: string }).id;
 }
 
-/** Snapshot a computed slot (mains + bonus) as the live mobile pick. */
+/**
+ * Snapshot a computed slot (mains + bonus) as the live mobile pick.
+ * One transaction in Postgres (`publish_recommendation`): the previous live row
+ * becomes history, so there is never a moment with zero or two live rows.
+ */
 export async function publishFavoriteSlot(
     client: SupabaseClient,
     slot: FavoriteSlot,
-): Promise<void> {
+): Promise<{ changed: boolean }> {
     if (!slot.algorithmName) throw new Error('Slot has no algorithm name');
     const algorithmId = await ensureAlgorithmId(client, slot.lotteryType, slot.algorithmName);
-    const { data: inserted, error: insertError } = await client
+    const { data, error } = await client.rpc('publish_recommendation', {
+        p_algorithm_id: algorithmId,
+        p_lottery_type: slot.lotteryType,
+        p_numbers: slot.winningNumbers,
+        p_bonus_numbers: slot.bonusNumbers,
+    });
+    if (error) {
+        if (!isMissingPublishRpc(error)) throw error;
+        // Migration 20261019000000 not applied yet: keep working the old way.
+        console.warn(
+            '[favorites] publish_recommendation() missing — run `supabase migration up`. Using legacy publish.',
+        );
+        return legacyPublish(client, algorithmId, slot);
+    }
+    const row = (Array.isArray(data) ? data[0] : data) as { changed?: boolean } | null;
+    return { changed: Boolean(row?.changed) };
+}
+
+function isMissingPublishRpc(error: { code?: string; message?: string }): boolean {
+    return (
+        error.code === 'PGRST202' ||
+        error.code === '42883' ||
+        /publish_recommendation/i.test(error.message ?? '')
+    );
+}
+
+/** Pre-migration path (non-atomic). Only used until the migration is applied. */
+async function legacyPublish(
+    client: SupabaseClient,
+    algorithmId: string,
+    slot: FavoriteSlot,
+): Promise<{ changed: boolean }> {
+    // Demote first, then insert: never two live rows (safe with the unique index).
+    const { error: demoteError } = await client
         .from('recommendations')
-        .insert({
-            algorithm_id: algorithmId,
-            lottery_type: slot.lotteryType,
-            numbers: slot.winningNumbers,
-            bonus_numbers: slot.bonusNumbers,
-            is_published: true,
-        })
-        .select('id')
-        .single();
-    if (insertError) throw insertError;
-    const newId = (inserted as { id: string }).id;
-    // Keep a single live row per algorithm + type.
-    const { error: cleanupError } = await client
-        .from('recommendations')
-        .delete()
+        .update({ is_published: false })
         .eq('algorithm_id', algorithmId)
         .eq('lottery_type', slot.lotteryType)
-        .neq('id', newId);
-    if (cleanupError) throw cleanupError;
+        .eq('is_published', true);
+    if (demoteError) throw demoteError;
+    const { error: insertError } = await client.from('recommendations').insert({
+        algorithm_id: algorithmId,
+        lottery_type: slot.lotteryType,
+        numbers: slot.winningNumbers,
+        bonus_numbers: slot.bonusNumbers,
+        is_published: true,
+    });
+    if (insertError) throw insertError;
+    return { changed: true };
+}
+
+/** Supabase errors are plain objects, not `Error` — keep their message. */
+export function errorMessage(err: unknown, fallback: string): string {
+    if (err instanceof Error) return err.message;
+    if (err && typeof err === 'object' && 'message' in err) {
+        const m = (err as { message?: unknown }).message;
+        if (typeof m === 'string' && m) return m;
+    }
+    return fallback;
 }
 
 /**
@@ -393,6 +442,83 @@ export async function generateAndPublishAllFavorites(
     }
 
     return { published, skipped, data };
+}
+
+/**
+ * Refresh the picks that are already live for the mobile app.
+ *
+ * Unlike `generateAndPublishAllFavorites` (the Generate button), this never
+ * publishes a slot the admin has unpublished — it only recomputes the slots
+ * that are currently `is_published` and replaces them in place. Called after
+ * draw changes so favourites always reflect the newest data without overriding
+ * a deliberate unpublish.
+ */
+export async function regeneratePublishedFavorites(
+    client: SupabaseClient,
+): Promise<FavoritesRefreshResult> {
+    const published = await loadPublishedFavorites(client);
+    if (published.size === 0) return { refreshed: 0, slots: [] };
+
+    const data = await listAllFavoriteSlots(client);
+    const slots = [...data.lotto6, ...data.lotto7];
+
+    let refreshed = 0;
+    const out: FavoritesRefreshResult['slots'] = [];
+    for (const slot of slots) {
+        if (!slot.algorithmName) continue;
+        const before = published.get(publishedKey(slot.lotteryType, slot.algorithmName));
+        if (!before) continue;
+        if (!isSlotReady(slot)) {
+            // No pick any more: an old pick must not linger in the app.
+            await unpublishFavoriteSlot(client, slot);
+            out.push({ lotteryType: slot.lotteryType, slot: slot.slot, status: 'stale', diff: 0, total: 0 });
+            continue;
+        }
+        await publishFavoriteSlot(client, slot);
+        refreshed += 1;
+        const diff = countDiff(
+            [...before.winningNumbers, ...before.bonusNumbers],
+            [...slot.winningNumbers, ...slot.bonusNumbers],
+        );
+        const total = slot.winningNumbers.length + slot.bonusNumbers.length;
+        out.push({
+            lotteryType: slot.lotteryType,
+            slot: slot.slot,
+            status: changeLevel(diff, total),
+            diff,
+            total,
+        });
+    }
+    return { refreshed, slots: out };
+}
+
+export type ChangeLevel = 'unchanged' | 'slight' | 'changed';
+
+export type FavoritesRefreshResult = {
+    refreshed: number;
+    slots: Array<{
+        lotteryType: LotteryType;
+        slot: number;
+        status: ChangeLevel | 'stale';
+        /** Positions (per column, mains + bonus) whose number differs. */
+        diff: number;
+        total: number;
+    }>;
+};
+
+/** Per-column compare — the algorithms pick one number per column. */
+export function countDiff(a: number[], b: number[]): number {
+    const len = Math.max(a.length, b.length);
+    let diff = 0;
+    for (let i = 0; i < len; i += 1) if (a[i] !== b[i]) diff += 1;
+    return diff;
+}
+
+/** "Slight" = at most 2 balls (or a third of the set) moved. */
+export function changeLevel(diff: number, total: number): ChangeLevel {
+    if (diff === 0) return 'unchanged';
+    if (diff <= Math.max(2, Math.floor(total / 3))) return 'slight';
+    return 'changed';
 }
 
 /** Hide a slot's picks from the mobile app (rows kept as history). */

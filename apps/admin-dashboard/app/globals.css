@@ -120,3 +120,14 @@ textarea.field-input {
         animation: none !important;
     }
 }
+
+/* Favorites change-summary badge: pop in when a new run lands. */
+@keyframes fav-badge-pop {
+    0% { transform: scale(0.4); opacity: 0; }
+    60% { transform: scale(1.15); opacity: 1; }
+    100% { transform: scale(1); }
+}
+.fav-badge-pop { animation: fav-badge-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+@media (prefers-reduced-motion: reduce) {
+    .fav-badge-pop { animation: none; }
+}

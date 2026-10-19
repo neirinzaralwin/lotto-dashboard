@@ -5,7 +5,7 @@ import {
     MIN_WINDOW,
     type WindowSizeResult,
 } from '@/lib/algorithms/dynamic-window';
-import { firstUnusedInOrder, globalFrequencyOrder } from '@/lib/algorithms/unique-pick';
+import { firstUnusedInOrder, globalFrequencyOrder, latestDrawBalls, type PickOptions } from '@/lib/algorithms/unique-pick';
 
 /** Historical constant. The window is now dynamic — see {@link computeWindowSize}. */
 export const FAVORITE_ONE_WINDOW = MIN_WINDOW;
@@ -51,6 +51,8 @@ export type FavoriteOneResult = {
     winningNumbers: number[];
     bonusNumbers: number[];
     columns: ColumnPickTrace[];
+    /** Balls of the newest draw skipped by the picker. */
+    excludedNumbers: number[];
     triggeredBy: 'draw' | 'import' | 'demo';
 };
 
@@ -112,11 +114,19 @@ export function computeFavoriteOne(
     lotteryType: LotteryType,
     historyNewestFirst: DrawWindowRow[],
     triggeredBy: FavoriteOneResult['triggeredBy'] = 'demo',
+    options: PickOptions = {},
 ): FavoriteOneResult {
+    const excludedNumbers = options.excludeLatest ? latestDrawBalls(historyNewestFirst) : [];
     const mains = mainCount(lotteryType);
     const bonuses = bonusCount(lotteryType);
     const max = numberMax(lotteryType);
-    const window = computeWindowSize(lotteryType, historyNewestFirst);
+    const window = computeWindowSize(
+        lotteryType,
+        historyNewestFirst,
+        options.window?.min,
+        options.window?.max,
+        options.window?.size,
+    );
     const rows = window.rows;
     /** Algorithm walks oldest → newest for display; mode does not care about order. */
     const chronological = [...rows].reverse();
@@ -130,7 +140,7 @@ export function computeFavoriteOne(
         max,
         false,
     );
-    const used = new Set<number>();
+    const used = new Set<number>(excludedNumbers);
     const columns: ColumnPickTrace[] = [];
     const winningNumbers: number[] = [];
     const bonusNumbers: number[] = [];
@@ -191,6 +201,7 @@ export function computeFavoriteOne(
         bonusNumbers,
         columns,
         triggeredBy,
+        excludedNumbers,
     };
 }
 

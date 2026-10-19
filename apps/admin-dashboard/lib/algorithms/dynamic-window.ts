@@ -26,6 +26,9 @@ export type WindowSizeResult = {
     columns: WindowColumnTrace[];
     /** True when history was shorter than MIN_WINDOW so no clamp was needed. */
     shortHistory: boolean;
+    /** Range this window was computed with (admin-configurable). */
+    min: number;
+    max: number;
 };
 
 function mainCount(lotteryType: LotteryType): number {
@@ -66,6 +69,7 @@ export function computeWindowSize(
     historyNewestFirst: DrawWindowRow[],
     min: number = MIN_WINDOW,
     max: number = MAX_WINDOW,
+    forcedSize?: number,
 ): WindowSizeResult {
     const available = Math.min(max, historyNewestFirst.length);
     const shortHistory = historyNewestFirst.length < min;
@@ -107,9 +111,10 @@ export function computeWindowSize(
     });
 
     const lastLock = columns.reduce((acc, c) => Math.max(acc, c.lockRow), min);
+    const wanted = forcedSize ?? lastLock;
     const windowSize = shortHistory
         ? historyNewestFirst.length
-        : Math.min(max, Math.max(min, Math.min(lastLock, available)));
+        : Math.min(max, Math.max(min, Math.min(wanted, available)));
 
-    return { rows: rows.slice(0, windowSize), windowSize, columns, shortHistory };
+    return { rows: rows.slice(0, windowSize), windowSize, columns, shortHistory, min, max };
 }

@@ -11,6 +11,7 @@ export function NumberOtpInput({
     labelledBy,
     tone = 'main',
     size = 'md',
+    enterSubmits = false,
 }: {
     values: number[];
     onChange: (next: number[]) => void;
@@ -18,6 +19,8 @@ export function NumberOtpInput({
     labelledBy: string;
     tone?: 'main' | 'bonus';
     size?: 'sm' | 'md';
+    /** Let Enter submit the surrounding form instead of jumping to the next box. */
+    enterSubmits?: boolean;
 }) {
     const { t } = useI18n();
     const refs = useRef<Array<HTMLInputElement | null>>([]);
@@ -65,7 +68,7 @@ export function NumberOtpInput({
             focusAt(index + 1);
             return;
         }
-        if ((e.key === ' ' || e.key === 'Enter') && index < values.length - 1) {
+        if ((e.key === ' ' || (e.key === 'Enter' && !enterSubmits)) && index < values.length - 1) {
             e.preventDefault();
             focusAt(index + 1);
             return;

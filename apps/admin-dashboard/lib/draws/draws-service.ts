@@ -2,6 +2,15 @@ import type { Draw, DrawCreateInput, LotteryType } from '@repo/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { mapDrawRow, normalizeDrawNumber, toDrawInsert, type DrawRow } from '@/lib/draws/map';
 import { maybeAutoNotifyOnPublish } from '@/lib/notifications';
+import {
+    errorMessage,
+    regeneratePublishedFavorites,
+    type FavoritesRefreshResult,
+} from '@/lib/algorithms/recommendations-service';
+import {
+    emitFavoritesRefreshed,
+    type FavoritesRefreshReport,
+} from '@/lib/algorithms/favorites-events';
 
 /** PostgREST/Supabase default max rows per request — page past it for full history. */
 const DRAWS_PAGE_SIZE = 1000;
@@ -21,6 +30,45 @@ async function quietAutoNotify(
         await maybeAutoNotifyOnPublish(client, lotteryType, drawNumber);
     } catch {
         /* non-blocking: publish succeeds even if push fails */
+    }
+}
+
+/**
+ * Recompute the currently-published favourites after a draw change so they
+ * always reflect the latest data. Fire-and-forget friendly: a draw mutation
+ * must still succeed if favourites cannot be refreshed.
+ */
+export async function quietRegenerateFavorites(
+    client: SupabaseClient,
+): Promise<FavoritesRefreshReport> {
+    const at = () => new Date().toISOString();
+    try {
+        let result: FavoritesRefreshResult;
+        if (typeof window !== 'undefined') {
+            // Server-side refresh: survives the tab closing; keepalive lets the
+            // request finish even during navigation.
+            const res = await fetch('/api/favorites/refresh', { method: 'POST', keepalive: true });
+            const body = (await res.json()) as FavoritesRefreshResult & { error?: string };
+            if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+            result = body;
+        } else {
+            result = await regeneratePublishedFavorites(client);
+        }
+        const report: FavoritesRefreshReport =
+            result.slots.length === 0
+                ? { status: 'none', at: at() }
+                : { status: 'ok', at: at(), ...result };
+        emitFavoritesRefreshed(report);
+        return report;
+    } catch (err) {
+        /* non-blocking: draw change succeeds even if favourites fail — but tell the admin */
+        const report: FavoritesRefreshReport = {
+            status: 'error',
+            at: at(),
+            message: errorMessage(err, String(err)),
+        };
+        emitFavoritesRefreshed(report);
+        return report;
     }
 }
 
@@ -70,11 +118,7 @@ export async function listDraws(
 
     const q = filters.search?.trim().toLowerCase();
     if (q) {
-        mapped = mapped.filter(
-            (d) =>
-                d.drawNumber.toLowerCase().includes(q) ||
-                d.drawDate.toLowerCase().includes(q),
-        );
+        mapped = mapped.filter((d) => d.drawNumber.toLowerCase().includes(q));
     }
 
     return mapped;
@@ -131,6 +175,7 @@ export async function createDraw(client: SupabaseClient, input: DrawCreateInput)
     if (draw.isPublished) {
         await quietAutoNotify(client, draw.lotteryType, draw.drawNumber);
     }
+    await quietRegenerateFavorites(client);
     return draw;
 }
 
@@ -164,12 +209,14 @@ export async function updateDraw(
     if (input.isPublished === true && !wasPublished && draw.isPublished) {
         await quietAutoNotify(client, draw.lotteryType, draw.drawNumber);
     }
+    await quietRegenerateFavorites(client);
     return draw;
 }
 
 export async function deleteDraw(client: SupabaseClient, id: string): Promise<void> {
     const { error } = await client.from('draws').delete().eq('id', id);
     if (error) throw error;
+    await quietRegenerateFavorites(client);
 }
 
 export async function setDrawPublished(
@@ -243,6 +290,7 @@ export async function setDrawsPublished(
             await quietAutoNotify(client, lotteryType, drawNumber);
         }
     }
+    await quietRegenerateFavorites(client);
     return data?.length ?? 0;
 }
 
@@ -279,5 +327,6 @@ export async function upsertDraws(
             await quietAutoNotify(client, lotteryType, drawNumber);
         }
     }
+    await quietRegenerateFavorites(client);
     return { upserted };
 }

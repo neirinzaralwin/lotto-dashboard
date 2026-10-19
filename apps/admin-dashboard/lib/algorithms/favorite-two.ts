@@ -5,7 +5,7 @@ import {
     digitalRootOfTime,
 } from '@/lib/algorithms/digital-root';
 import type { DigitFrequency, DrawWindowRow } from '@/lib/algorithms/favorite-one';
-import { firstUnusedInOrder, globalFrequencyOrder } from '@/lib/algorithms/unique-pick';
+import { firstUnusedInOrder, globalFrequencyOrder, latestDrawBalls, type PickOptions } from '@/lib/algorithms/unique-pick';
 
 export type DateTimeScanRow = DrawWindowRow & {
     dateRoot: number;
@@ -41,6 +41,8 @@ export type FavoriteTwoResult = {
     winningNumbers: number[];
     bonusNumbers: number[];
     columns: FavoriteTwoColumnTrace[];
+    /** Balls of the newest draw skipped by the picker. */
+    excludedNumbers: number[];
     triggeredBy: 'draw' | 'import' | 'demo';
 };
 
@@ -116,6 +118,26 @@ export function scanDateTimeKey(historyNewestFirst: DrawWindowRow[]): {
     };
 }
 
+/**
+ * Favorite 3/4 history range. The key walk only looks inside the newest `max`
+ * rows; the frequency history is the rows up to the matched key row, but never
+ * fewer than `min` nor more than `max`. No range → whole history (legacy).
+ */
+export function scanKeyInRange(
+    historyNewestFirst: DrawWindowRow[],
+    range?: { min: number; max: number; size?: number },
+): ReturnType<typeof scanDateTimeKey> & { history: DrawWindowRow[] } {
+    if (!range) return { ...scanDateTimeKey(historyNewestFirst), history: historyNewestFirst };
+    const capped = historyNewestFirst.slice(0, range.max);
+    const scan = scanDateTimeKey(capped);
+    const matchedAt = scan.matchedRow ? scan.scanRows.length : capped.length;
+    const size =
+        range.size != null
+            ? Math.min(capped.length, Math.max(range.min, Math.min(range.max, range.size)))
+            : Math.min(capped.length, Math.max(range.min, matchedAt));
+    return { ...scan, history: capped.slice(0, size) };
+}
+
 export function numberMaxForType(lotteryType: LotteryType): number {
     return lotteryType === 'lotto6' ? 43 : 37;
 }
@@ -140,9 +162,13 @@ export function computeFavoriteTwo(
     lotteryType: LotteryType,
     historyNewestFirst: DrawWindowRow[],
     triggeredBy: FavoriteTwoResult['triggeredBy'] = 'demo',
+    options: PickOptions = {},
 ): FavoriteTwoResult {
-    const history = historyNewestFirst;
-    const { scanRows, matchedRow, keyRoot } = scanDateTimeKey(history);
+    const excludedNumbers = options.excludeLatest ? latestDrawBalls(historyNewestFirst) : [];
+    const { scanRows, matchedRow, keyRoot, history } = scanKeyInRange(
+        historyNewestFirst,
+        options.window,
+    );
     const max = numberMaxForType(lotteryType);
     /** Every ball in range whose digital root equals the key. */
     const pool = keyRoot == null ? [] : candidatesForKeyRoot(keyRoot, max);
@@ -159,7 +185,7 @@ export function computeFavoriteTwo(
         max,
         false,
     );
-    const used = new Set<number>();
+    const used = new Set<number>(excludedNumbers);
     const columns: FavoriteTwoColumnTrace[] = [];
     const winningNumbers: number[] = [];
     const bonusNumbers: number[] = [];
@@ -234,6 +260,7 @@ export function computeFavoriteTwo(
         bonusNumbers,
         columns,
         triggeredBy,
+        excludedNumbers,
     };
 }
 
