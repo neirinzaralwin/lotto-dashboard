@@ -77,6 +77,8 @@ export function latestDrawBalls(
 export type PickOptions = {
     /** Skip every ball of the newest draw (default off; the live service turns it on). */
     excludeLatest?: boolean;
+    /** Random source for tie-free choices (which single-digit ball to replace); injectable for tests. */
+    rng?: () => number;
     /** History range in rows (admin setting); each algorithm applies it its own way. */
     window?: {
         min: number;
@@ -95,4 +97,46 @@ export function randomWindowSize(min: number, max: number, rng: () => number = M
     const lo = Math.min(min, max);
     const hi = Math.max(min, max);
     return lo + Math.floor(rng() * (hi - lo + 1));
+}
+
+/** At most this many single-digit (1–9) main balls in one favorite set. Bonus balls are not counted. */
+export const MAX_SINGLE_DIGIT_MAINS = 2;
+
+/** `used` plus 1–9, so a forced column can only pick its best two-digit candidate. */
+export function blockSingleDigits(used: Set<number>): Set<number> {
+    const out = new Set(used);
+    for (let n = 1; n <= 9; n++) out.add(n);
+    return out;
+}
+
+/**
+ * Keep at most {@link MAX_SINGLE_DIGIT_MAINS} single-digit mains.
+ * `run(forced)` computes the favorite with the given main columns restricted
+ * to two-digit balls (each still takes its own best-ranked candidate).
+ * When there are too many single digits, a random subset is kept and the rest
+ * of those columns are re-picked as two-digit; repeats until the set is valid
+ * (a re-pick can shift a later column onto a single digit).
+ */
+export function capSingleDigitMains<R extends { winningNumbers: number[] }>(
+    run: (forced: ReadonlySet<number>) => R,
+    rng: () => number = Math.random,
+): R {
+    const forced = new Set<number>();
+    let result = run(forced);
+    for (let guard = 0; guard < 10; guard++) {
+        const singles = result.winningNumbers
+            .map((n, i) => ({ n, i }))
+            .filter(({ n, i }) => n >= 1 && n <= 9 && !forced.has(i))
+            .map(({ i }) => i);
+        const excess = singles.length - MAX_SINGLE_DIGIT_MAINS;
+        if (excess <= 0) return result;
+        // Fisher–Yates: which single digits survive is random.
+        for (let k = singles.length - 1; k > 0; k--) {
+            const j = Math.floor(rng() * (k + 1));
+            [singles[k], singles[j]] = [singles[j]!, singles[k]!];
+        }
+        for (const i of singles.slice(0, excess)) forced.add(i);
+        result = run(forced);
+    }
+    return result;
 }

@@ -148,6 +148,9 @@ export const en: MessageTree = {
         drawLabel: 'Draw {number}',
     },
     search: {
+        historyLatest: 'Latest search',
+        historyEarlier: 'Earlier search',
+        historyHint: 'Showing your last {count} searches — Reset clears them.',
         submit: 'Search',
         pressEnter: 'Press Enter or Search',
         dialog: 'Search draws',

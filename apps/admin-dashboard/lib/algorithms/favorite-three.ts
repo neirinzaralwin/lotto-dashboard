@@ -7,7 +7,7 @@ import {
     scanKeyInRange,
     type DateTimeScanRow,
 } from '@/lib/algorithms/favorite-two';
-import { firstUnusedInOrder, globalFrequencyOrder, latestDrawBalls, type PickOptions } from '@/lib/algorithms/unique-pick';
+import { firstUnusedInOrder, globalFrequencyOrder, latestDrawBalls, type PickOptions, blockSingleDigits, capSingleDigitMains } from '@/lib/algorithms/unique-pick';
 
 export type FavoriteThreeColumnTrace = {
     columnIndex: number;
@@ -99,6 +99,20 @@ export function computeFavoriteThree(
     triggeredBy: FavoriteThreeResult['triggeredBy'] = 'demo',
     options: PickOptions = {},
 ): FavoriteThreeResult {
+    // At most two single-digit mains; extra ones are re-picked as two-digit.
+    return capSingleDigitMains(
+        (forced) => computeFavoriteThreeWith(lotteryType, historyNewestFirst, triggeredBy, options, forced),
+        options.rng,
+    );
+}
+
+function computeFavoriteThreeWith(
+    lotteryType: LotteryType,
+    historyNewestFirst: DrawWindowRow[],
+    triggeredBy: FavoriteThreeResult['triggeredBy'],
+    options: PickOptions,
+    forcedTwoDigit: ReadonlySet<number>,
+): FavoriteThreeResult {
     const excludedNumbers = options.excludeLatest ? latestDrawBalls(historyNewestFirst) : [];
     const { scanRows, matchedRow, keyRoot, history } = scanKeyInRange(
         historyNewestFirst,
@@ -154,7 +168,14 @@ export function computeFavoriteThree(
 
     for (let col = 0; col < mains; col++) {
         const columnValues = chronological.map((r) => r.winningNumbers[col] ?? 0);
-        const { trace, picked } = buildColumn('main', col, columnValues, used, coldMains);
+        const { trace, picked } = buildColumn(
+            'main',
+            col,
+            columnValues,
+            forcedTwoDigit.has(col) ? blockSingleDigits(used) : used,
+            coldMains,
+        );
+        if (picked > 0) used.add(picked);
         winningNumbers.push(picked);
         columns.push(trace);
     }

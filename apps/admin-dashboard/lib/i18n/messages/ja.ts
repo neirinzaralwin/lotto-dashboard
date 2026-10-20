@@ -147,6 +147,9 @@ export const ja: MessageTree = {
         drawLabel: '第{number}回',
     },
     search: {
+        historyLatest: '最新の検索',
+        historyEarlier: '以前の検索',
+        historyHint: '直近 {count} 件の検索結果を表示中 — リセットで消去します。',
         submit: '検索',
         pressEnter: 'Enter キーまたは「検索」',
         dialog: '抽選を検索',

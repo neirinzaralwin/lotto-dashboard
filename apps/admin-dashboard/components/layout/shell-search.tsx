@@ -14,13 +14,21 @@ export type ShellSearchNumbers = {
     mains: number[];
 };
 
+/** One submitted search (draw number and/or balls). */
+export type SearchEntry = { query: string; balls: number[] };
+
+/** How many past searches stay on screen per tab (Reset clears them). */
+export const SEARCH_HISTORY_LIMIT = 3;
+
 /** Draw-number query + main-number slots kept per game tab. */
 type ShellSearchTabState = {
     /** What is typed — never filters by itself. */
     query: string;
     numbers: ShellSearchNumbers;
     /** What was submitted (Search button / Enter) — drives results. */
-    applied: { query: string; balls: number[] };
+    applied: SearchEntry;
+    /** Submitted searches, newest first, at most {@link SEARCH_HISTORY_LIMIT}. */
+    history: SearchEntry[];
 };
 
 type ShellSearchContextValue = {
@@ -46,6 +54,8 @@ type ShellSearchContextValue = {
     /** Submitted balls. */
     filledBalls: number[];
     hasNumberFilter: boolean;
+    /** Last searches of the active tab, newest first (current one included). */
+    searchHistory: SearchEntry[];
 };
 
 const ShellSearchContext = createContext<ShellSearchContextValue | null>(null);
@@ -56,7 +66,7 @@ function emptySlots(type: LotteryType): ShellSearchNumbers {
 }
 
 function emptyTab(type: LotteryType): ShellSearchTabState {
-    return { query: '', numbers: emptySlots(type), applied: { query: '', balls: [] } };
+    return { query: '', numbers: emptySlots(type), applied: { query: '', balls: [] }, history: [] };
 }
 
 function collectFilled(numbers: ShellSearchNumbers): number[] {
@@ -81,7 +91,12 @@ const fallback: ShellSearchContextValue = {
     clearSelection: () => undefined,
     filledBalls: [],
     hasNumberFilter: false,
+    searchHistory: [],
 };
+
+function sameEntry(a: SearchEntry, b: SearchEntry) {
+    return a.query === b.query && a.balls.length === b.balls.length && a.balls.every((n, i) => n === b.balls[i]);
+}
 
 export function ShellSearchProvider({ children }: { children: ReactNode }) {
     const [tabs, setTabs] = useState<Record<LotteryType, ShellSearchTabState>>(() => ({
@@ -137,12 +152,16 @@ export function ShellSearchProvider({ children }: { children: ReactNode }) {
     const submitSearch = useCallback(() => {
         setTabs((prev) => {
             const tab = prev[activeType];
+            const entry: SearchEntry = { query: tab.query.trim(), balls: collectFilled(tab.numbers) };
+            const isEmpty = entry.query === '' && entry.balls.length === 0;
+            // Keep earlier searches on screen (newest first, deduped); an
+            // empty submit just clears the current filter.
+            const history = isEmpty
+                ? tab.history
+                : [entry, ...tab.history.filter((e) => !sameEntry(e, entry))].slice(0, SEARCH_HISTORY_LIMIT);
             return {
                 ...prev,
-                [activeType]: {
-                    ...tab,
-                    applied: { query: tab.query.trim(), balls: collectFilled(tab.numbers) },
-                },
+                [activeType]: { ...tab, applied: entry, history },
             };
         });
         setSelectedDrawId(null);
@@ -176,6 +195,7 @@ export function ShellSearchProvider({ children }: { children: ReactNode }) {
             clearSelection,
             filledBalls,
             hasNumberFilter,
+            searchHistory: active.history,
         }),
         [
             query,
@@ -194,6 +214,7 @@ export function ShellSearchProvider({ children }: { children: ReactNode }) {
             clearSelection,
             filledBalls,
             hasNumberFilter,
+            active.history,
         ],
     );
 

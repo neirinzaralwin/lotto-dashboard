@@ -7,7 +7,7 @@ import {
     type DrawWindowRow,
 } from '@/lib/algorithms/favorite-one';
 import type { WindowSizeResult } from '@/lib/algorithms/dynamic-window';
-import { firstUnusedInOrder, globalFrequencyOrder, latestDrawBalls, type PickOptions } from '@/lib/algorithms/unique-pick';
+import { firstUnusedInOrder, globalFrequencyOrder, latestDrawBalls, type PickOptions, blockSingleDigits, capSingleDigitMains } from '@/lib/algorithms/unique-pick';
 
 export const FAVORITE_FOUR_MIN_WINDOW = MIN_WINDOW;
 export const FAVORITE_FOUR_MAX_WINDOW = MAX_WINDOW;
@@ -89,6 +89,20 @@ export function computeFavoriteFour(
     triggeredBy: FavoriteFourResult['triggeredBy'] = 'demo',
     options: PickOptions = {},
 ): FavoriteFourResult {
+    // At most two single-digit mains; extra ones are re-picked as two-digit.
+    return capSingleDigitMains(
+        (forced) => computeFavoriteFourWith(lotteryType, historyNewestFirst, triggeredBy, options, forced),
+        options.rng,
+    );
+}
+
+function computeFavoriteFourWith(
+    lotteryType: LotteryType,
+    historyNewestFirst: DrawWindowRow[],
+    triggeredBy: FavoriteFourResult['triggeredBy'],
+    options: PickOptions,
+    forcedTwoDigit: ReadonlySet<number>,
+): FavoriteFourResult {
     const excludedNumbers = options.excludeLatest ? latestDrawBalls(historyNewestFirst) : [];
     const mains = mainCount(lotteryType);
     const bonuses = bonusCount(lotteryType);
@@ -121,7 +135,12 @@ export function computeFavoriteFour(
     for (let col = 0; col < mains; col++) {
         const columnValues = chronological.map((r) => r.winningNumbers[col] ?? 0);
         const frequencies = rankRarestFrequencies(columnValues);
-        const { picked, rarest, usedFallback } = pickRarest(frequencies, used, max, coldMains);
+        const { picked, rarest, usedFallback } = pickRarest(
+            frequencies,
+            forcedTwoDigit.has(col) ? blockSingleDigits(used) : used,
+            max,
+            coldMains,
+        );
         if (picked > 0) used.add(picked);
         winningNumbers.push(picked);
         columns.push({

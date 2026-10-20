@@ -5,7 +5,7 @@ import {
     digitalRootOfTime,
 } from '@/lib/algorithms/digital-root';
 import type { DigitFrequency, DrawWindowRow } from '@/lib/algorithms/favorite-one';
-import { firstUnusedInOrder, globalFrequencyOrder, latestDrawBalls, type PickOptions } from '@/lib/algorithms/unique-pick';
+import { firstUnusedInOrder, globalFrequencyOrder, latestDrawBalls, type PickOptions, blockSingleDigits, capSingleDigitMains } from '@/lib/algorithms/unique-pick';
 
 export type DateTimeScanRow = DrawWindowRow & {
     dateRoot: number;
@@ -164,6 +164,20 @@ export function computeFavoriteTwo(
     triggeredBy: FavoriteTwoResult['triggeredBy'] = 'demo',
     options: PickOptions = {},
 ): FavoriteTwoResult {
+    // At most two single-digit mains; extra ones are re-picked as two-digit.
+    return capSingleDigitMains(
+        (forced) => computeFavoriteTwoWith(lotteryType, historyNewestFirst, triggeredBy, options, forced),
+        options.rng,
+    );
+}
+
+function computeFavoriteTwoWith(
+    lotteryType: LotteryType,
+    historyNewestFirst: DrawWindowRow[],
+    triggeredBy: FavoriteTwoResult['triggeredBy'],
+    options: PickOptions,
+    forcedTwoDigit: ReadonlySet<number>,
+): FavoriteTwoResult {
     const excludedNumbers = options.excludeLatest ? latestDrawBalls(historyNewestFirst) : [];
     const { scanRows, matchedRow, keyRoot, history } = scanKeyInRange(
         historyNewestFirst,
@@ -236,7 +250,14 @@ export function computeFavoriteTwo(
 
     for (let col = 0; col < mains; col++) {
         const columnValues = chronological.map((r) => r.winningNumbers[col] ?? 0);
-        const { trace, picked } = buildColumn('main', col, columnValues, used, hotMains);
+        const { trace, picked } = buildColumn(
+            'main',
+            col,
+            columnValues,
+            forcedTwoDigit.has(col) ? blockSingleDigits(used) : used,
+            hotMains,
+        );
+        if (picked > 0) used.add(picked);
         winningNumbers.push(picked);
         columns.push(trace);
     }

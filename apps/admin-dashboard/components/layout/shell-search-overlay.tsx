@@ -6,13 +6,15 @@ import { Check, RotateCcw, Search } from 'lucide-react';
 import type { Draw, LotteryType } from '@repo/types';
 import { useI18n } from '@/components/i18n/locale-provider';
 import { NumberOtpInput } from '@/components/draws/number-otp-input';
-import { drawContainsAllMains, useShellSearch } from '@/components/layout/shell-search';
+import { drawContainsAllMains, useShellSearch, type SearchEntry } from '@/components/layout/shell-search';
 import { UnderlineTabs } from '@/components/layout/underline-tabs';
 import { AppIcon } from '@/components/ui/icon';
 import { listDraws } from '@/lib/draws/draws-service';
 import { createClient } from '@/lib/supabase/client';
 
 const RESULT_LIMIT = 40;
+/** Older searches stay visible but shorter, so the panel stays compact. */
+const OLDER_RESULT_LIMIT = 10;
 
 const SEARCH_TABS: { id: LotteryType; labelKey: string }[] = [
     { id: 'lotto6', labelKey: 'common.lotto6' },
@@ -52,6 +54,7 @@ export function ShellSearchOverlay({
         hasNumberFilter,
         selectedDrawId,
         selectDraw,
+        searchHistory,
     } = useShellSearch();
 
     const panelRef = useRef<HTMLDivElement>(null);
@@ -64,10 +67,10 @@ export function ShellSearchOverlay({
         setLoadError(null);
         try {
             const client = createClient();
+            // Every draw of the tab: past searches are filtered locally.
             const rows = await listDraws(client, {
                 lotteryType: activeType,
                 published: 'all',
-                search: appliedQuery || undefined,
             });
             setDraws(rows);
         } catch (err) {
@@ -76,6 +79,8 @@ export function ShellSearchOverlay({
         } finally {
             setLoading(false);
         }
+        // appliedQuery: refetch on each submit so new/edited draws show up.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeType, appliedQuery, t]);
 
     useEffect(() => {
@@ -108,23 +113,28 @@ export function ShellSearchOverlay({
 
     const needle = appliedQuery.toLowerCase();
 
-    const filtered = useMemo(() => {
-        if (!needle && !hasNumberFilter) return [];
-        let rows = draws.filter((d) => d.lotteryType === activeType);
-        if (needle) rows = rows.filter((d) => d.drawNumber.toLowerCase().includes(needle));
-        if (hasNumberFilter) rows = rows.filter((d) => drawContainsAllMains(d, filledBalls));
-        return rows.slice(0, RESULT_LIMIT);
-    }, [draws, needle, hasNumberFilter, filledBalls, activeType]);
+    /** One result block per kept search, newest first. */
+    const groups = useMemo(() => {
+        const ofType = draws.filter((d) => d.lotteryType === activeType);
+        return searchHistory.map((entry, index) => {
+            const q = entry.query.toLowerCase();
+            let rows = ofType;
+            if (q) rows = rows.filter((d) => d.drawNumber.toLowerCase().includes(q));
+            if (entry.balls.length > 0) rows = rows.filter((d) => drawContainsAllMains(d, entry.balls));
+            const limit = index === 0 ? RESULT_LIMIT : OLDER_RESULT_LIMIT;
+            return { entry, index, total: rows.length, rows: rows.slice(0, limit) };
+        });
+    }, [draws, activeType, searchHistory]);
 
-    /** Ball values that should be visually highlighted in result chips. */
-    const highlightBalls = useMemo(() => {
-        if (hasNumberFilter) return new Set(filledBalls);
-        if (/^\d{1,2}$/.test(needle)) return new Set([Number.parseInt(needle, 10)]);
+    /** Ball values highlighted in a group's result chips. */
+    function highlightFor(entry: SearchEntry) {
+        if (entry.balls.length > 0) return new Set(entry.balls);
+        if (/^\d{1,2}$/.test(entry.query)) return new Set([Number.parseInt(entry.query, 10)]);
         return new Set<number>();
-    }, [hasNumberFilter, filledBalls, needle]);
+    }
 
-    function ballChipClass(n: number, tone: 'main' | 'bonus') {
-        if (highlightBalls.has(n)) {
+    function ballChipClass(n: number, tone: 'main' | 'bonus', highlight: Set<number>) {
+        if (highlight.has(n)) {
             return 'inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-[#e85d04] px-1 text-[0.65rem] font-semibold tabular-nums text-white ring-1 ring-[#d00000]/shadow-sm';
         }
         if (tone === 'bonus') {
@@ -133,36 +143,42 @@ export function ShellSearchOverlay({
         return 'inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-white px-1 text-[0.65rem] font-semibold tabular-nums ring-1 ring-[var(--lotto-border)]';
     }
 
-    function highlightText(value: string, className: string) {
-        if (!needle || !value.toLowerCase().includes(needle)) {
+    function highlightText(value: string, className: string, q: string) {
+        const lowerQ = q.toLowerCase();
+        if (!lowerQ || !value.toLowerCase().includes(lowerQ)) {
             return <span className={className}>{value}</span>;
         }
-        const lower = value.toLowerCase();
-        const idx = lower.indexOf(needle);
-        const before = value.slice(0, idx);
-        const match = value.slice(idx, idx + needle.length);
-        const after = value.slice(idx + needle.length);
+        const idx = value.toLowerCase().indexOf(lowerQ);
         return (
             <span className={className}>
-                {before}
+                {value.slice(0, idx)}
                 <mark className="rounded-sm bg-[#ffba08] px-0.5 text-[#7a0404] not-italic">
-                    {match}
+                    {value.slice(idx, idx + lowerQ.length)}
                 </mark>
-                {after}
+                {value.slice(idx + lowerQ.length)}
             </span>
         );
     }
 
-    const showIdle = !loading && !loadError && !needle && !hasNumberFilter;
-    const hasActiveFilter = Boolean(needle) || hasNumberFilter;
+    function entryLabel(entry: SearchEntry) {
+        const parts: string[] = [];
+        if (entry.query) parts.push(`#${entry.query}`);
+        if (entry.balls.length > 0) parts.push(t('nav.balls', { list: entry.balls.join(' · ') }));
+        return parts.join(' · ');
+    }
+
+    const showIdle = !loading && !loadError && groups.length === 0;
+    const hasActiveFilter = Boolean(needle) || hasNumberFilter || searchHistory.length > 0;
 
     const matchFooter = useMemo(() => {
         if (showIdle) return t('search.idlePrompt');
-        const plus = draws.length > filtered.length && (needle || hasNumberFilter);
-        if (filtered.length === 1 && !plus) return t('search.matchOne');
-        if (plus) return t('search.matchManyPlus', { count: filtered.length });
-        return t('search.matchMany', { count: filtered.length });
-    }, [showIdle, t, draws.length, filtered.length, needle, hasNumberFilter]);
+        if (searchHistory.length > 1) return t('search.historyHint', { count: searchHistory.length });
+        const first = groups[0];
+        if (!first) return t('search.idlePrompt');
+        if (first.total === 1) return t('search.matchOne');
+        if (first.total > first.rows.length) return t('search.matchManyPlus', { count: first.rows.length });
+        return t('search.matchMany', { count: first.total });
+    }, [showIdle, t, searchHistory.length, groups]);
 
     function onSelect(draw: Draw) {
         selectDraw(draw.id);
@@ -276,95 +292,100 @@ export function ShellSearchOverlay({
                         {t('search.idlePrompt')}
                     </p>
                 ) : null}
-                {!loading && !loadError && !showIdle && filtered.length === 0 ? (
-                    <p className="px-2.5 py-4 text-center text-[0.8rem] text-[var(--lotto-muted)]">
-                        {t('search.noMatches')}
-                    </p>
-                ) : null}
-
-                {!loading && !showIdle && filtered.length > 0 ? (
-                    <div className="mb-2">
-                        <p className="px-2.5 pb-1 pt-1 text-[0.65rem] font-medium uppercase tracking-[0.06em] text-[var(--lotto-muted-soft)]">
-                            {t('search.drawsOfType', { type: t(`common.${activeType}`) })}
-                        </p>
-                        <ul className="space-y-0.5">
-                            {filtered.map((draw) => {
-                                const selected = selectedDrawId === draw.id;
-                                return (
-                                    <li key={draw.id}>
-                                        <button
-                                            type="button"
-                                            onClick={() => onSelect(draw)}
-                                            className={`flex w-full items-start gap-2 rounded-xl px-2.5 py-2 text-left transition-colors ${
-                                                selected
-                                                    ? 'bg-[var(--lotto-accent-soft)]'
-                                                    : 'hover:bg-[var(--lotto-surface-muted)]'
-                                            }`}
-                                        >
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex items-baseline gap-2">
-                                                    {highlightText(
-                                                        `#${draw.drawNumber}`,
-                                                        'text-[0.8rem] font-semibold tabular-nums',
-                                                    )}
-                                                    <span className="text-[0.7rem] text-[var(--lotto-muted)]">
-                                                        {draw.drawDate}
-                                                    </span>
-                                                    <span
-                                                        className={`ml-auto shrink-0 text-[0.65rem] font-medium ${
-                                                            draw.isPublished
-                                                                ? 'text-[var(--lotto-delta)]'
-                                                                : 'text-[var(--lotto-muted-soft)]'
-                                                        }`}
-                                                    >
-                                                        {draw.isPublished
-                                                            ? t('common.published')
-                                                            : t('common.draft')}
-                                                    </span>
-                                                </div>
-                                                <div className="mt-1 flex flex-wrap gap-1">
-                                                    {draw.winningNumbers.map((n, i) => (
-                                                        <span
-                                                            key={`m-${i}`}
-                                                            title={
-                                                                highlightBalls.has(n)
-                                                                    ? t('search.matchedBall')
-                                                                    : undefined
-                                                            }
-                                                            className={ballChipClass(n, 'main')}
-                                                        >
-                                                            {n}
-                                                        </span>
-                                                    ))}
-                                                    {draw.bonusNumbers.map((n, i) => (
-                                                        <span
-                                                            key={`b-${i}`}
-                                                            title={
-                                                                highlightBalls.has(n)
-                                                                    ? t('search.matchedBall')
-                                                                    : undefined
-                                                            }
-                                                            className={ballChipClass(n, 'bonus')}
-                                                        >
-                                                            {n}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            {selected ? (
-                                                <AppIcon
-                                                    icon={Check}
-                                                    size={16}
-                                                    className="mt-0.5 shrink-0 text-[var(--lotto-fg)]"
-                                                />
-                                            ) : null}
-                                        </button>
-                                    </li>
-                                );
-                            })}
-                        </ul>
-                    </div>
-                ) : null}
+                {!loading && !loadError
+                    ? groups.map(({ entry, index, total, rows }) => {
+                          const highlight = highlightFor(entry);
+                          return (
+                              <div
+                                  key={`${index}-${entry.query}-${entry.balls.join(',')}`}
+                                  className={`mb-2 ${index > 0 ? 'border-t border-dashed border-[var(--lotto-border)] pt-2 opacity-80' : ''}`}
+                              >
+                                  <p className="flex items-baseline gap-2 px-2.5 pb-1 pt-1 text-[0.65rem] font-medium uppercase tracking-[0.06em] text-[var(--lotto-muted-soft)]">
+                                      <span>{index === 0 ? t('search.historyLatest') : t('search.historyEarlier')}</span>
+                                      <span className="normal-case tracking-normal text-[var(--lotto-fg)]">
+                                          {entryLabel(entry)}
+                                      </span>
+                                      <span className="ml-auto normal-case tracking-normal tabular-nums">
+                                          {total === 1 ? t('search.matchOne') : t('search.matchMany', { count: total })}
+                                      </span>
+                                  </p>
+                                  {rows.length === 0 ? (
+                                      <p className="px-2.5 py-2 text-[0.8rem] text-[var(--lotto-muted)]">
+                                          {t('search.noMatches')}
+                                      </p>
+                                  ) : (
+                                      <ul className="space-y-0.5">
+                                          {rows.map((draw) => {
+                                              const selected = selectedDrawId === draw.id;
+                                              return (
+                                                  <li key={draw.id}>
+                                                      <button
+                                                          type="button"
+                                                          onClick={() => onSelect(draw)}
+                                                          className={`flex w-full items-start gap-2 rounded-xl px-2.5 py-2 text-left transition-colors ${
+                                                              selected
+                                                                  ? 'bg-[var(--lotto-accent-soft)]'
+                                                                  : 'hover:bg-[var(--lotto-surface-muted)]'
+                                                          }`}
+                                                      >
+                                                          <div className="min-w-0 flex-1">
+                                                              <div className="flex items-baseline gap-2">
+                                                                  {highlightText(
+                                                                      `#${draw.drawNumber}`,
+                                                                      'text-[0.8rem] font-semibold tabular-nums',
+                                                                      entry.query,
+                                                                  )}
+                                                                  <span className="text-[0.7rem] text-[var(--lotto-muted)]">
+                                                                      {draw.drawDate}
+                                                                  </span>
+                                                                  <span
+                                                                      className={`ml-auto shrink-0 text-[0.65rem] font-medium ${
+                                                                          draw.isPublished
+                                                                              ? 'text-[var(--lotto-delta)]'
+                                                                              : 'text-[var(--lotto-muted-soft)]'
+                                                                      }`}
+                                                                  >
+                                                                      {draw.isPublished ? t('common.published') : t('common.draft')}
+                                                                  </span>
+                                                              </div>
+                                                              <div className="mt-1 flex flex-wrap gap-1">
+                                                                  {draw.winningNumbers.map((n, i) => (
+                                                                      <span
+                                                                          key={`m-${i}`}
+                                                                          title={highlight.has(n) ? t('search.matchedBall') : undefined}
+                                                                          className={ballChipClass(n, 'main', highlight)}
+                                                                      >
+                                                                          {n}
+                                                                      </span>
+                                                                  ))}
+                                                                  {draw.bonusNumbers.map((n, i) => (
+                                                                      <span
+                                                                          key={`b-${i}`}
+                                                                          title={highlight.has(n) ? t('search.matchedBall') : undefined}
+                                                                          className={ballChipClass(n, 'bonus', highlight)}
+                                                                      >
+                                                                          {n}
+                                                                      </span>
+                                                                  ))}
+                                                              </div>
+                                                          </div>
+                                                          {selected ? (
+                                                              <AppIcon
+                                                                  icon={Check}
+                                                                  size={16}
+                                                                  className="mt-0.5 shrink-0 text-[var(--lotto-fg)]"
+                                                              />
+                                                          ) : null}
+                                                      </button>
+                                                  </li>
+                                              );
+                                          })}
+                                      </ul>
+                                  )}
+                              </div>
+                          );
+                      })
+                    : null}
             </div>
 
             <div className="flex items-center justify-between border-t border-[var(--lotto-border)] px-3 py-2 text-[0.7rem] text-[var(--lotto-muted)]">

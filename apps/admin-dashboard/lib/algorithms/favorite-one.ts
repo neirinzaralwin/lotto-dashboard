@@ -5,7 +5,7 @@ import {
     MIN_WINDOW,
     type WindowSizeResult,
 } from '@/lib/algorithms/dynamic-window';
-import { firstUnusedInOrder, globalFrequencyOrder, latestDrawBalls, type PickOptions } from '@/lib/algorithms/unique-pick';
+import { firstUnusedInOrder, globalFrequencyOrder, latestDrawBalls, type PickOptions, blockSingleDigits, capSingleDigitMains } from '@/lib/algorithms/unique-pick';
 
 /** Historical constant. The window is now dynamic — see {@link computeWindowSize}. */
 export const FAVORITE_ONE_WINDOW = MIN_WINDOW;
@@ -116,6 +116,20 @@ export function computeFavoriteOne(
     triggeredBy: FavoriteOneResult['triggeredBy'] = 'demo',
     options: PickOptions = {},
 ): FavoriteOneResult {
+    // At most two single-digit mains; extra ones are re-picked as two-digit.
+    return capSingleDigitMains(
+        (forced) => computeFavoriteOneWith(lotteryType, historyNewestFirst, triggeredBy, options, forced),
+        options.rng,
+    );
+}
+
+function computeFavoriteOneWith(
+    lotteryType: LotteryType,
+    historyNewestFirst: DrawWindowRow[],
+    triggeredBy: FavoriteOneResult['triggeredBy'],
+    options: PickOptions,
+    forcedTwoDigit: ReadonlySet<number>,
+): FavoriteOneResult {
     const excludedNumbers = options.excludeLatest ? latestDrawBalls(historyNewestFirst) : [];
     const mains = mainCount(lotteryType);
     const bonuses = bonusCount(lotteryType);
@@ -150,7 +164,7 @@ export function computeFavoriteOne(
         const frequencies = rankFrequencies(columnValues);
         const { picked, mode, usedFallback } = pickFromFrequencies(
             frequencies,
-            used,
+            forcedTwoDigit.has(col) ? blockSingleDigits(used) : used,
             max,
             hotMains,
         );
