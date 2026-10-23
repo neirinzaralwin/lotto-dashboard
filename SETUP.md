@@ -117,7 +117,9 @@ The dashboard requires staff Auth. Mobile end users do **not** sign in.
 
 | Email | Password |
 | --- | --- |
-| `admin@gmail.com` | `password` |
+| `admin@gmail.com` | `admin123` |
+
+Use this weak password only with local Supabase; choose a strong unique password for any shared or hosted environment.
 
 Create it once (while local Supabase is running):
 
@@ -129,8 +131,10 @@ curl -s -X POST "$API/auth/v1/admin/users" \
   -H "apikey: $SERVICE" \
   -H "Authorization: Bearer $SERVICE" \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@gmail.com","password":"password","email_confirm":true}'
+  -d '{"email":"admin@gmail.com","password":"admin123","email_confirm":true}'
 ```
+
+If `admin@gmail.com` already exists, update its password in Studio under **Authentication → Users** instead of creating a duplicate.
 
 **Option A — Studio UI**
 
@@ -140,7 +144,7 @@ curl -s -X POST "$API/auth/v1/admin/users" \
 **Option B — CLI** (if your CLI version supports it)
 
 ```bash
-supabase auth signup --email admin@gmail.com --password 'password'
+supabase auth signup --email admin@gmail.com --password 'admin123'
 ```
 
 > After `supabase db reset`, Auth users are wiped — recreate the admin user with the command above.
@@ -184,6 +188,8 @@ Stop local Supabase when you are done for the day (optional):
 ```bash
 supabase stop
 ```
+
+Stopping Supabase preserves the local database and Auth users in Docker's persisted data. Start it again with `supabase start`; do not run `supabase db reset` unless you intend to wipe and recreate the local database.
 
 ---
 

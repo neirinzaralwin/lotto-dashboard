@@ -12,6 +12,7 @@ import {
 } from '@/components/bento/primitives';
 import { useI18n } from '@/components/i18n/locale-provider';
 import { AppIcon } from '@/components/ui/icon';
+import { formatDrawDate } from '@/lib/algorithms/format-time';
 import { digitalRootOfNumber } from '@/lib/algorithms/digital-root';
 import type { FavoriteTwoColumnTrace, FavoriteTwoResult } from '@/lib/algorithms/favorite-two';
 
@@ -21,7 +22,7 @@ type Props = {
 };
 
 export function FavoriteTwoThinking({ lotto6, lotto7 }: Props) {
-    const { t, locale } = useI18n();
+    const { t } = useI18n();
     const [lotteryType, setLotteryType] = useState<LotteryType>('lotto6');
     const [activeColumn, setActiveColumn] = useState(0);
 
@@ -165,7 +166,7 @@ export function FavoriteTwoThinking({ lotto6, lotto7 }: Props) {
                                                 </span>
                                             </td>
                                             <td className="whitespace-nowrap px-3 py-2.5 text-[var(--lotto-muted)]">
-                                                {formatDate(row.drawDate, locale)}
+                                                {formatDrawDate(row.drawDate)}
                                             </td>
                                             <td className="px-3 py-2.5 text-center">
                                                 <RootChip value={row.dateRoot} hot={row.matched} />
@@ -426,13 +427,4 @@ function ColumnTrail({
             </div>
         </div>
     );
-}
-
-function formatDate(iso: string, locale: string): string {
-    if (!iso) return '—';
-    try {
-        return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(iso));
-    } catch {
-        return iso;
-    }
 }

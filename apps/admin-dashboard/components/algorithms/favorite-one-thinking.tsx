@@ -12,6 +12,7 @@ import {
 } from '@/components/bento/primitives';
 import { useI18n } from '@/components/i18n/locale-provider';
 import { AppIcon } from '@/components/ui/icon';
+import { formatDrawDate } from '@/lib/algorithms/format-time';
 import {
     type ColumnPickTrace,
     type FavoriteOneResult,
@@ -23,7 +24,7 @@ type Props = {
 };
 
 export function FavoriteOneThinking({ lotto6, lotto7 }: Props) {
-    const { t, locale } = useI18n();
+    const { t } = useI18n();
     const [lotteryType, setLotteryType] = useState<LotteryType>('lotto6');
     const [activeColumn, setActiveColumn] = useState(0);
 
@@ -108,7 +109,7 @@ export function FavoriteOneThinking({ lotto6, lotto7 }: Props) {
                     <p className="text-xs text-[var(--lotto-muted)]">
                         {t('algorithms.windowMeta', {
                             count: result.windowSize,
-                            date: formatDate(result.latestDate, locale),
+                            date: formatDrawDate(result.latestDate),
                         })}
                     </p>
                 </div>
@@ -170,7 +171,7 @@ export function FavoriteOneThinking({ lotto6, lotto7 }: Props) {
                                                 #{row.drawNumber}
                                             </td>
                                             <td className="whitespace-nowrap px-3 py-2.5 text-[var(--lotto-muted)]">
-                                                {formatDate(row.drawDate, locale)}
+                                                {formatDrawDate(row.drawDate)}
                                             </td>
                                             {mainColumns.map((col) => {
                                                 const value = row.winningNumbers[col.columnIndex] ?? 0;
@@ -432,13 +433,4 @@ function ColumnTrail({
             </div>
         </div>
     );
-}
-
-function formatDate(iso: string, locale: string): string {
-    if (!iso) return '—';
-    try {
-        return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(iso));
-    } catch {
-        return iso;
-    }
 }
