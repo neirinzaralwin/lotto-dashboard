@@ -10,6 +10,7 @@ import { drawContainsAllMains, useShellSearch, type SearchEntry } from '@/compon
 import { UnderlineTabs } from '@/components/layout/underline-tabs';
 import { AppIcon } from '@/components/ui/icon';
 import { listDraws } from '@/lib/draws/draws-service';
+import { matchesDrawNumber } from '@/lib/draws/search';
 import { createClient } from '@/lib/supabase/client';
 
 const RESULT_LIMIT = 40;
@@ -117,9 +118,9 @@ export function ShellSearchOverlay({
     const groups = useMemo(() => {
         const ofType = draws.filter((d) => d.lotteryType === activeType);
         return searchHistory.map((entry, index) => {
-            const q = entry.query.toLowerCase();
+            const q = entry.query.trim();
             let rows = ofType;
-            if (q) rows = rows.filter((d) => d.drawNumber.toLowerCase().includes(q));
+            if (q) rows = rows.filter((d) => matchesDrawNumber(d.drawNumber, q));
             if (entry.balls.length > 0) rows = rows.filter((d) => drawContainsAllMains(d, entry.balls));
             const limit = index === 0 ? RESULT_LIMIT : OLDER_RESULT_LIMIT;
             return { entry, index, total: rows.length, rows: rows.slice(0, limit) };

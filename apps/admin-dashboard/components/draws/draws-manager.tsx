@@ -35,6 +35,7 @@ import {
     setDrawsPublished,
     updateDraw,
 } from '@/lib/draws/draws-service';
+import { matchesDrawNumber } from '@/lib/draws/search';
 import { validateDrawNumbers } from '@/lib/draws/validate';
 
 const DRAWS_PAGE_SIZE = 20;
@@ -242,12 +243,12 @@ export function DrawsManager() {
             );
         }
 
-        const q = query.trim().toLowerCase();
+        const q = query.trim();
         if (q) {
             rows = rows.filter(
                 (d) =>
                     d.lotteryType === activeType &&
-                    d.drawNumber.toLowerCase().includes(q),
+                    matchesDrawNumber(d.drawNumber, q),
             );
         }
 

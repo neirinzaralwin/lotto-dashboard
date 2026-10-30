@@ -1,6 +1,7 @@
 import type { Draw, DrawCreateInput, LotteryType } from '@repo/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { mapDrawRow, normalizeDrawNumber, toDrawInsert, type DrawRow } from '@/lib/draws/map';
+import { matchesDrawNumber } from '@/lib/draws/search';
 import { maybeAutoNotifyOnPublish } from '@/lib/notifications';
 import {
     errorMessage,
@@ -116,9 +117,9 @@ export async function listDraws(
 
     let mapped = rows.map(mapDrawRow);
 
-    const q = filters.search?.trim().toLowerCase();
+    const q = filters.search?.trim();
     if (q) {
-        mapped = mapped.filter((d) => d.drawNumber.toLowerCase().includes(q));
+        mapped = mapped.filter((d) => matchesDrawNumber(d.drawNumber, q));
     }
 
     return mapped;
