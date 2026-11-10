@@ -11,8 +11,8 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-    title: 'Win Search LOTO6•7 当選予想 検索',
-    description: 'Win Search LOTO6•7 当選予想 検索 — Lotto 6 & Lotto 7 results admin',
+    title: 'Win Search LOTO6•7 当せん予想 検索',
+    description: 'Win Search LOTO6•7 当せん予想 検索 — Lotto 6 & Lotto 7 results admin',
     manifest: '/manifest.webmanifest',
     icons: {
         icon: [{ url: '/favicon.ico', sizes: 'any' }],
